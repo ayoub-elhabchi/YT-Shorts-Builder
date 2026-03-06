@@ -1,2 +1,4 @@
 file 'C:\Users\Just a PC\Desktop\youtube-shorts-builder\temp\shorts_builder\scene_1\clip.mp4'
 file 'C:\Users\Just a PC\Desktop\youtube-shorts-builder\temp\shorts_builder\scene_2\clip.mp4'
+file 'C:\Users\Just a PC\Desktop\youtube-shorts-builder\temp\shorts_builder\scene_3\clip.mp4'
+file 'C:\Users\Just a PC\Desktop\youtube-shorts-builder\temp\shorts_builder\scene_4\clip.mp4'
