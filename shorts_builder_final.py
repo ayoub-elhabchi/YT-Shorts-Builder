@@ -18,6 +18,16 @@ from datetime import datetime
 import traceback
 import re
 
+# Transitions module
+try:
+    from transitions import (
+        PILLOW_AVAILABLE, VALID_TRANSITIONS,
+        prepare_image_for_shorts, build_video_with_transitions
+    )
+except ImportError:
+    PILLOW_AVAILABLE = False
+    VALID_TRANSITIONS = ['none']
+
 app = Flask(__name__)
 
 TEMP_DIR = Path("./temp/shorts_builder")
@@ -606,9 +616,23 @@ def index():
 <html><head><title>Shorts Builder v3.7 beta</title></head>
 <body style="font-family:sans-serif;padding:40px;background:#667eea;color:white;">
 <h1>🎬 YouTube Shorts Builder v3.7 beta</h1>
-<p>Global Search + Subtitles + Precise Word Alignment + Compressed Starts</p>
+<p>Global Search + Subtitles + Precise Word Alignment + Transitions</p>
+<h3>Transitions:</h3>
+<ul>
+<li><b>fade</b> — Cross-dissolve</li>
+<li><b>fade_black</b> — Fade to black, then in</li>
+<li><b>slide_left / slide_right / slide_up / slide_down</b> — Push</li>
+<li><b>zoom</b> — Zoom out + fade</li>
+<li><b>wipe_left / wipe_down</b> — Wipe reveal</li>
+<li><b>none</b> — Hard cut (default)</li>
+</ul>
 </body></html>"""
-    return jsonify({"service": "Shorts Builder", "version": "3.7-beta", "status": "running"})
+    return jsonify({
+        "service": "Shorts Builder",
+        "version": "3.7-beta",
+        "status": "running",
+        "transitions": VALID_TRANSITIONS
+    })
 
 
 @app.route('/health', methods=['GET'])
@@ -618,8 +642,14 @@ def health_check():
         w = True
     except Exception:
         w = False
-    return jsonify({"status": "healthy", "version": "3.7-beta",
-                    "ffmpeg": shutil.which('ffmpeg') is not None, "whisper": w})
+    return jsonify({
+        "status": "healthy",
+        "version": "3.7-beta",
+        "ffmpeg": shutil.which('ffmpeg') is not None,
+        "whisper": w,
+        "pillow": PILLOW_AVAILABLE,
+        "transitions": VALID_TRANSITIONS
+    })
 
 
 @app.route('/build', methods=['POST'])
@@ -630,23 +660,35 @@ def build_video():
             return jsonify({"success": False, "error": "No JSON"}), 400
 
         log("=" * 60)
-        log("🎬 BUILD v3.7 beta - Global Search + Precise Alignment")
+        log("🎬 BUILD v3.7 beta - Precise Alignment + Transitions")
         log("=" * 60)
 
         title = data.get('title', f'video_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
         full_audio_url = data.get('full_audio_url')
-        scenes = data.get('scenes',[])
+        scenes = data.get('scenes', [])
         subtitles_enabled = data.get('subtitles', False)
         subtitle_style = data.get('subtitle_style', 'word_by_word')
+        transition_effect = data.get('transition', 'none')
+        transition_duration = float(data.get('transition_duration', 0.5))
 
         if not full_audio_url:
             return jsonify({"success": False, "error": "full_audio_url required"}), 400
         if not scenes:
             return jsonify({"success": False, "error": "No scenes"}), 400
 
+        # Validate transition settings
+        if transition_effect not in VALID_TRANSITIONS:
+            log(f"   ⚠️  Unknown transition '{transition_effect}', falling back to 'none'")
+            transition_effect = 'none'
+        if transition_effect != 'none' and not PILLOW_AVAILABLE:
+            log("   ⚠️  Pillow not installed, transitions disabled")
+            transition_effect = 'none'
+        transition_duration = max(0.2, min(2.0, transition_duration))
+
         log(f"📝 Title: {title}")
         log(f"📊 Scenes: {len(scenes)}")
         log(f"📝 Subtitles: {subtitles_enabled} ({subtitle_style})")
+        log(f"🔄 Transition: {transition_effect} ({transition_duration}s)")
 
         safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
         safe_title = safe_title.replace(' ', '_')[:50]
@@ -654,7 +696,7 @@ def build_video():
         work_dir = TEMP_DIR / f"build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         work_dir.mkdir(exist_ok=True)
 
-        # STEP 1
+        # ── STEP 1: DOWNLOAD AUDIO ──
         log("\n>>> STEP 1: DOWNLOAD AUDIO")
         raw_audio = work_dir / "full_audio_raw"
         download_file(full_audio_url, raw_audio)
@@ -662,55 +704,113 @@ def build_video():
         ensure_wav(raw_audio, full_audio_wav)
         total_duration = get_audio_duration(full_audio_wav)
 
-        # STEP 2
+        # ── STEP 2: TRANSCRIBE ──
         log("\n>>> STEP 2: TRANSCRIBE")
         transcribed_words, full_transcript = transcribe_audio_with_whisper(full_audio_wav)
         log(f"\n📄 TRANSCRIPT:\n   {full_transcript}")
         log(f"   ({len(transcribed_words)} words)")
 
-        # STEP 3
+        # ── STEP 3: ALIGN SCENES ──
         log("\n>>> STEP 3: ALIGN SCENES (Global Search + Precise Alignment)")
-        scene_texts =[s.get('text', '') for s in scenes]
+        scene_texts = [s.get('text', '') for s in scenes]
         scenes_timing = align_scenes_to_timestamps(transcribed_words, scene_texts)
 
-        # STEP 4
-        log("\n>>> STEP 4: BUILD CLIPS")
-        video_clips =[]
-
-        for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
-            log(f"\n🎬 SCENE {idx}/{len(scenes)}")
-            log(f"   Time: {timing['start']:.2f}s → {timing['end']:.2f}s ({timing['duration']:.2f}s)")
-
-            if timing['duration'] < 0.5:
-                log("   ⚠️  Too short, skipping")
-                continue
-
-            image_url = scene.get('image_url')
-            if not image_url:
-                log("   ⚠️  No image, skipping")
-                continue
-
-            image_path = work_dir / f"scene_{idx}_image.jpg"
-            download_file(image_url, image_path)
-
-            scene_audio = work_dir / f"scene_{idx}_audio.wav"
-            extract_audio_chunk(full_audio_wav, scene_audio, timing['start'], timing['end'])
-
-            clip_path = work_dir / f"scene_{idx}_clip.mp4"
-            create_video_clip(image_path, scene_audio, clip_path)
-
-            video_clips.append(str(clip_path))
-            log(f"   ✅ Scene {idx} done!")
-
-        if not video_clips:
-            raise Exception("No clips created!")
-
-        # STEP 5
-        log(f"\n>>> STEP 5: CONCATENATE {len(video_clips)} CLIPS")
+        # ── STEP 4: BUILD VIDEO ──
         final_output = OUTPUT_DIR / f"{safe_title}.mp4"
-        concatenate_videos(video_clips, str(final_output))
 
-        # STEP 6
+        if transition_effect != 'none':
+            # ═══════════════════════════════════════════
+            # TRANSITION PATH: Pillow frame generation
+            # ═══════════════════════════════════════════
+            log(f"\n>>> STEP 4: BUILD WITH TRANSITIONS ({transition_effect})")
+
+            scenes_data = []
+            for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
+                if timing['duration'] < 0.3:
+                    log(f"   ⚠️  Scene {idx} too short ({timing['duration']:.2f}s), skipping")
+                    continue
+
+                image_url = scene.get('image_url')
+                if not image_url:
+                    log(f"   ⚠️  Scene {idx} has no image, skipping")
+                    continue
+
+                 # Extract per-scene transition (fallback to global if missing/invalid)
+                scene_trans = scene.get('transition', transition_effect)
+                if scene_trans not in VALID_TRANSITIONS:
+                    scene_trans = transition_effect
+                scene_dur = float(scene.get('transition_duration', transition_duration))
+                scene_dur = max(0.2, min(2.0, scene_dur))
+
+
+                log(f"   📥 Scene {idx}: downloading image...")
+                image_path = work_dir / f"scene_{idx}_image.jpg"
+                download_file(image_url, image_path)
+
+                pil_img = prepare_image_for_shorts(image_path)
+                scenes_data.append({
+                'image': pil_img,
+                'start': timing['start'],
+                'end': timing['end'],
+                'scene_index': idx,
+                'transition': scene_trans,
+                'transition_duration': scene_dur
+                })
+                log(f"   ✅ Scene {idx}: {timing['start']:.2f}s → {timing['end']:.2f}s")
+
+            if not scenes_data:
+                raise Exception("No valid scenes to build!")
+
+            log(f"\n   🎬 Building video with {len(scenes_data)} scenes...")
+            build_video_with_transitions(
+                scenes_data,
+                str(full_audio_wav),
+                str(final_output),
+                transition_effect=transition_effect,
+                transition_duration=transition_duration
+            )
+            scenes_processed = len(scenes_data)
+
+        else:
+            # ═══════════════════════════════════════════
+            # ORIGINAL PATH: per-clip + concatenation
+            # ═══════════════════════════════════════════
+            log("\n>>> STEP 4: BUILD CLIPS (no transitions)")
+            video_clips = []
+
+            for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
+                log(f"\n🎬 SCENE {idx}/{len(scenes)}")
+                log(f"   Time: {timing['start']:.2f}s → {timing['end']:.2f}s ({timing['duration']:.2f}s)")
+
+                if timing['duration'] < 0.5:
+                    log("   ⚠️  Too short, skipping")
+                    continue
+
+                image_url = scene.get('image_url')
+                if not image_url:
+                    log("   ⚠️  No image, skipping")
+                    continue
+
+                image_path = work_dir / f"scene_{idx}_image.jpg"
+                download_file(image_url, image_path)
+
+                scene_audio = work_dir / f"scene_{idx}_audio.wav"
+                extract_audio_chunk(full_audio_wav, scene_audio, timing['start'], timing['end'])
+
+                clip_path = work_dir / f"scene_{idx}_clip.mp4"
+                create_video_clip(image_path, scene_audio, clip_path)
+
+                video_clips.append(str(clip_path))
+                log(f"   ✅ Scene {idx} done!")
+
+            if not video_clips:
+                raise Exception("No clips created!")
+
+            log(f"\n>>> STEP 5: CONCATENATE {len(video_clips)} CLIPS")
+            concatenate_videos(video_clips, str(final_output))
+            scenes_processed = len(video_clips)
+
+        # ── STEP 6: SUBTITLES ──
         if subtitles_enabled and transcribed_words:
             log(f"\n>>> STEP 6: SUBTITLES ({subtitle_style})")
             ass_path = work_dir / "subtitles.ass"
@@ -726,6 +826,7 @@ def build_video():
         else:
             log("\n>>> STEP 6: SUBTITLES SKIPPED")
 
+        # ── CLEANUP ──
         shutil.rmtree(work_dir)
         file_size_mb = round(final_output.stat().st_size / 1024 / 1024, 2)
 
@@ -734,11 +835,15 @@ def build_video():
         log("=" * 60)
 
         return jsonify({
-            "success": True, "version": "3.7-beta", "title": title,
+            "success": True,
+            "version": "3.7-beta",
+            "title": title,
             "output_path": str(final_output),
-            "scenes_processed": len(video_clips),
+            "scenes_processed": scenes_processed,
             "file_size_mb": file_size_mb,
             "subtitles": subtitles_enabled,
+            "transition": transition_effect,
+            "transition_duration": transition_duration,
             "transcript_preview": full_transcript[:200]
         }), 200
 
@@ -750,7 +855,8 @@ def build_video():
 
 if __name__ == '__main__':
     log("=" * 60)
-    log("🚀 YouTube Shorts Builder v3.7 beta - Precise Word Alignment")
+    log("🚀 YouTube Shorts Builder v3.7 beta")
+    log("   Precise Alignment + Transitions + Subtitles")
     log("=" * 60)
     if shutil.which('ffmpeg'):
         log("✅ FFmpeg")
@@ -761,5 +867,9 @@ if __name__ == '__main__':
         log("✅ Whisper")
     except Exception:
         log("❌ Whisper NOT found")
+    if PILLOW_AVAILABLE:
+        log(f"✅ Pillow (transitions: {', '.join(VALID_TRANSITIONS)})")
+    else:
+        log("⚠️  Pillow NOT found — transitions disabled, hard cuts only")
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port, debug=False)
