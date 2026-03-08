@@ -7,6 +7,11 @@ Supports: fade, fade_black, slide_left/right/up/down, zoom, wipe_left/down
 import subprocess
 from datetime import datetime
 
+try:
+    from effects import apply_ken_burns
+except ImportError:
+    pass
+
 # Try importing Pillow
 try:
     from PIL import Image
@@ -279,7 +284,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                     si = i
                     break
 
-            # Check if we're inside a transition zone between any two scenes
+                        # Check if we're inside a transition zone between any two scenes
             wrote_transition = False
 
             for bi in range(num_scenes - 1):
@@ -296,46 +301,69 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                 ht = min(half_trans, dur_before * 0.4, dur_after * 0.4)
 
                 if ht > 0.02 and boundary - ht <= t <= boundary + ht:
-                    progress = (t - (boundary - ht)) / (2.0 * ht)
-                    frame = make_transition_frame(
-                        scenes_data[bi]['image'],
-                        scenes_data[bi + 1]['image'],
-                        effect, progress, width, height
-                    )
+                    trans_progress = (t - (boundary - ht)) / (2.0 * ht)
+                    
+                    # Default to static images
+                    img_out = scenes_data[bi]['image']
+                    img_in = scenes_data[bi + 1]['image']
+
+                    # --- DYNAMIC SEAMLESS BLEND: Calculate motion for BOTH scenes during overlap ---
+                    if scenes_data[bi].get('kb_effect'):
+                        p_out = (t - scenes_data[bi]['start']) / max(0.1, scenes_data[bi]['end'] - scenes_data[bi]['start'])
+                        img_out = apply_ken_burns(scenes_data[bi]['raw_image'], max(0.0, min(1.0, p_out)), scenes_data[bi]['kb_effect'], width, height)
+
+                    if scenes_data[bi + 1].get('kb_effect'):
+                        p_in = (t - scenes_data[bi + 1]['start']) / max(0.1, scenes_data[bi + 1]['end'] - scenes_data[bi + 1]['start'])
+                        img_in = apply_ken_burns(scenes_data[bi + 1]['raw_image'], max(0.0, min(1.0, p_in)), scenes_data[bi + 1]['kb_effect'], width, height)
+                    
+                    # Blend the two moving images together
+                    frame = make_transition_frame(img_out, img_in, effect, trans_progress, width, height)
                     process.stdin.write(frame.tobytes())
                     wrote_transition = True
                     break
 
             if not wrote_transition:
-                # First scene: fade in from black (using Scene 1's duration)
+                # First scene: fade in from black 
                 start_dur = scenes_data[0]['transition_duration']
                 start_ht = start_dur / 2.0
                 if si == 0 and t < start_ht and start_ht > 0.02:
                     progress = t / start_ht
-                    frame = make_transition_frame(
-                        black, scenes_data[0]['image'],
-                        'fade', progress, width, height
-                    )
+                    
+                    # --- DYNAMIC KEN BURNS FADE IN ---
+                    img_target = scenes_data[0]['image']
+                    if scenes_data[0].get('kb_effect'):
+                        s_prog = (t - scenes_data[0]['start']) / max(0.1, scenes_data[0]['end'] - scenes_data[0]['start'])
+                        img_target = apply_ken_burns(scenes_data[0]['raw_image'], s_prog, scenes_data[0]['kb_effect'], width, height)
+                    
+                    frame = make_transition_frame(black, img_target, 'fade', progress, width, height)
                     process.stdin.write(frame.tobytes())
 
-                # Last scene: fade out to black at end (using Last Scene's duration)
-                elif si == num_scenes - 1:
+                # Last scene: fade out to black at end
+                elif si == num_scenes - 1 and total_duration - t < (scenes_data[-1]['transition_duration'] / 2.0):
                     end_dur = scenes_data[-1]['transition_duration']
                     end_ht = end_dur / 2.0
-                    if total_duration - t < end_ht and end_ht > 0.02:
-                        time_left = total_duration - t
-                        progress = 1.0 - (time_left / end_ht)
-                        frame = make_transition_frame(
-                            scenes_data[-1]['image'], black,
-                            'fade', progress, width, height
-                        )
+                    time_left = total_duration - t
+                    progress = 1.0 - (time_left / end_ht)
+                    
+                    # --- DYNAMIC KEN BURNS FADE OUT ---
+                    img_source = scenes_data[-1]['image']
+                    if scenes_data[-1].get('kb_effect'):
+                        s_prog = (t - scenes_data[-1]['start']) / max(0.1, scenes_data[-1]['end'] - scenes_data[-1]['start'])
+                        img_source = apply_ken_burns(scenes_data[-1]['raw_image'], s_prog, scenes_data[-1]['kb_effect'], width, height)
+                        
+                    frame = make_transition_frame(img_source, black, 'fade', progress, width, height)
+                    process.stdin.write(frame.tobytes())
+
+                # Standard Frame (No fade in/out)
+                else:
+                    if scenes_data[si].get('kb_effect'):
+                        # --- GENERATE KEN BURNS FRAME ON THE FLY ---
+                        s_prog = (t - scenes_data[si]['start']) / max(0.1, scenes_data[si]['end'] - scenes_data[si]['start'])
+                        frame = apply_ken_burns(scenes_data[si]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[si]['kb_effect'], width, height)
                         process.stdin.write(frame.tobytes())
                     else:
+                        # Fallback to static fast cache
                         process.stdin.write(scene_bytes[si])
-
-                # Static frame: write cached bytes (fast, no Pillow work)
-                else:
-                    process.stdin.write(scene_bytes[si])
 
             frames_written += 1
 

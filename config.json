@@ -9,11 +9,12 @@
         "font_size_highlight": 72,
         "font_color_primary": "&H0000FFFF",
         "font_color_white": "&H00FFFFFF",
-        "margin_v": 200,
+        "margin_v": 350,
         "alignment": 2
     },
     "video": {
         "default_transition": "none",
-        "default_transition_duration": 0.5
+        "default_transition_duration": 0.5,
+        "ken_burns_movement": true
     }
 }

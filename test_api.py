@@ -4,7 +4,7 @@ import json
 url = "http://localhost:5000/build"
 
 data = {
-  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V3",
+  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V6",
   "full_audio_url": "https://drive.google.com/uc?id=1RXR1hcJ6HsosIZoSWJi-wD4VHV9C1A9u&export=download",
   "subtitles": True,
   "subtitle_style": "word_by_word",
@@ -16,28 +16,32 @@ data = {
       "text": "A cargo ship vanished in 1803, swallowed by the Atlantic. Its wreck, sealed for centuries, held a secret.",
       "image_url": "https://drive.google.com/uc?id=18BB4RFla_7xrRBLJYWJCKTJDheuKtfZK&export=download",
       "transition": "fade",
-      "transition_duration": 0.5
+      "transition_duration": 0.5,
+      "ken_burns_effect": "zoom_in"
     },
     {
       "index": 2,
-      "text": "Dr. Elena Martinez stands on the deck of the research vessel.She watches the sonar‑lit hull.",
+      "text": "Dr. Elena Martinez stands on the deck of the research vessel. She watches the sonar‑lit hull.",
       "image_url": "https://drive.google.com/uc?id=1ax2HAB08TrGSX09PHCFgjOqG1g9ILIuV&export=download",
       "transition": "zoom",
-      "transition_duration": 0.6
+      "transition_duration": 0.6,
+      "ken_burns_effect": "pan_right"
     },
     {
       "index": 3,
       "text": "Coordinates 34°12′N 58°23′W were logged in a sealed parchment. The recovered logbook described a bronze machine, gears turning without power. The object defies known chronology.",
       "image_url": "https://drive.google.com/uc?id=1kyzIq2J1MZqka5LiHPKW7B_hF-uVi5SB&export=download",
       "transition": "fade_black",
-      "transition_duration": 0.8
+      "transition_duration": 0.8,
+      "ken_burns_effect": "zoom_out"
     },
     {
       "index": 4,
       "text": "How could a 2,000‑year‑old computer survive in a wooden ship?",
       "image_url": "https://drive.google.com/uc?id=1rRe2CdFeu8UAn8ErIxJNlUpZARrkxpbh&export=download",
       "transition": "fade",
-      "transition_duration": 0.4
+      "transition_duration": 0.4,
+      "ken_burns_effect": "pan_up"
     },
     {
       "index": 5,
@@ -51,7 +55,8 @@ data = {
       "text": "The sealed chamber remains, its bronze plates cold. Future dives will test the limits of history.",
       "image_url": "https://drive.google.com/uc?id=1IlZADJ8YNlRvOioeZeAIc2dk-e7TdJl4&export=download",
       "transition": "fade_black",
-      "transition_duration": 0.8
+      "transition_duration": 0.8,
+      "ken_burns_effect": "pan_down"
     }
   ]
 }

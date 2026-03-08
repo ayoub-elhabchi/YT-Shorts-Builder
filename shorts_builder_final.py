@@ -29,15 +29,23 @@ except ImportError:
     PILLOW_AVAILABLE = False
     VALID_TRANSITIONS = ['none']
 
+# Effects module
+try:
+    from effects import get_random_ken_burns_effect, KEN_BURNS_EFFECTS
+except ImportError:
+    get_random_ken_burns_effect = None
+
 app = Flask(__name__)
 
 TEMP_DIR = Path("./temp/shorts_builder")
 OUTPUT_DIR = Path("./output/shorts_output")
 BGM_DIR = Path("./assets/bgm")   
+OVERLAYS_DIR = Path("./assets/overlays")  
 CONFIG_PATH = Path("./config.json")
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 BGM_DIR.mkdir(parents=True, exist_ok=True)
+OVERLAYS_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_CONFIG = {
     "audio": {
@@ -55,7 +63,8 @@ DEFAULT_CONFIG = {
     },
     "video": {
         "default_transition": "none",
-        "default_transition_duration": 0.5
+        "default_transition_duration": 0.5,
+        "ken_burns_movement": True
     }
 }
 
@@ -761,6 +770,7 @@ def build_video():
         transition_duration = float(data.get('transition_duration', 0.5))
         add_bgm = data.get('add_bgm', CONFIG['audio']['add_bgm_by_default'])
         bgm_volume = float(data.get('bgm_volume', CONFIG['audio']['default_bgm_volume']))
+        use_ken_burns = data.get('ken_burns', CONFIG['video'].get('ken_burns_movement', True))
 
         if not full_audio_url:
             return jsonify({"success": False, "error": "full_audio_url required"}), 400
@@ -827,43 +837,49 @@ def build_video():
         # ── STEP 4: BUILD VIDEO ──
         final_output = OUTPUT_DIR / f"{safe_title}.mp4"
 
-        if transition_effect != 'none':
-            # ═══════════════════════════════════════════
-            # TRANSITION PATH: Pillow frame generation
-            # ═══════════════════════════════════════════
-            log(f"\n>>> STEP 4: BUILD WITH TRANSITIONS ({transition_effect})")
+        if transition_effect != 'none' or use_ken_burns:  # <--- EDITED THIS LINE
+            log(f"\n>>> STEP 4: BUILD ADVANCED PATH (Transitions / Ken Burns)")
 
             scenes_data = []
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
                 if timing['duration'] < 0.3:
-                    log(f"   ⚠️  Scene {idx} too short ({timing['duration']:.2f}s), skipping")
                     continue
 
                 image_url = scene.get('image_url')
                 if not image_url:
-                    log(f"   ⚠️  Scene {idx} has no image, skipping")
                     continue
 
-                 # Extract per-scene transition (fallback to global if missing/invalid)
                 scene_trans = scene.get('transition', transition_effect)
                 if scene_trans not in VALID_TRANSITIONS:
                     scene_trans = transition_effect
                 scene_dur = float(scene.get('transition_duration', transition_duration))
                 scene_dur = max(0.2, min(2.0, scene_dur))
 
-
                 log(f"   📥 Scene {idx}: downloading image...")
                 image_path = work_dir / f"scene_{idx}_image.jpg"
                 download_file(image_url, image_path)
 
                 pil_img = prepare_image_for_shorts(image_path)
+                
+                # --- NEW KEN BURNS DATA ---
+                from PIL import Image
+                raw_img = Image.open(image_path).convert('RGB')
+                # Check if the JSON specified a valid effect, otherwise pick randomly
+                requested_fx = scene.get('ken_burns_effect')
+                if requested_fx in KEN_BURNS_EFFECTS:
+                    kb_fx = requested_fx
+                else:
+                    kb_fx = get_random_ken_burns_effect() if (use_ken_burns and get_random_ken_burns_effect) else None
+
                 scenes_data.append({
-                'image': pil_img,
-                'start': timing['start'],
-                'end': timing['end'],
-                'scene_index': idx,
-                'transition': scene_trans,
-                'transition_duration': scene_dur
+                    'image': pil_img,
+                    'raw_image': raw_img,     # <--- ADDED
+                    'kb_effect': kb_fx,       # <--- ADDED
+                    'start': timing['start'],
+                    'end': timing['end'],
+                    'scene_index': idx,
+                    'transition': scene_trans,
+                    'transition_duration': scene_dur
                 })
                 log(f"   ✅ Scene {idx}: {timing['start']:.2f}s → {timing['end']:.2f}s")
 
