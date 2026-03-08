@@ -8,6 +8,7 @@ Added: VAD Aesthetic Silence Compressor precisely on locked boundaries (Squashin
 
 import os
 import json
+import random 
 import subprocess
 import requests
 import base64
@@ -32,8 +33,10 @@ app = Flask(__name__)
 
 TEMP_DIR = Path("./temp/shorts_builder")
 OUTPUT_DIR = Path("./output/shorts_output")
+BGM_DIR = Path("./assets/bgm")   
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+BGM_DIR.mkdir(parents=True, exist_ok=True)
 
 # Words too common to match on
 SKIP_WORDS = frozenset({
@@ -176,6 +179,36 @@ def ensure_wav(input_path, wav_path):
         raise Exception(f"Cannot convert: {result.stderr[:200]}")
     log(f"   ✅ WAV ready: {os.path.getsize(wav_path)} bytes")
     return wav_path
+
+def mix_background_music(vo_path, bgm_path, output_path, volume=0.2):
+    log(f" 🎵 Mixing Background Music: {os.path.basename(bgm_path)} at {volume*100}% volume")
+    
+    # FFmpeg filter: 
+    # -stream_loop -1: loops the BGM infinitely so it covers the whole video
+    # normalize=0: prevents FFmpeg from automatically lowering the voiceover volume
+    cmd = [
+        'ffmpeg',
+        '-i', str(vo_path),
+        '-stream_loop', '-1', '-i', str(bgm_path),
+        '-filter_complex', f"[0:a]volume=1.0[vo];[1:a]volume={volume}[bgm];[vo][bgm]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]",
+        '-map', '[aout]',
+        '-acodec', 'pcm_s16le', '-ar', '16000',
+        '-y', str(output_path)
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.returncode != 0:
+        # Fallback to standard amix if normalize=0 is not supported on older FFmpeg versions
+        log("   ⚠️ normalize=0 failed, trying legacy amix...")
+        cmd[8] = f"[1:a]volume={volume}[bgm];[0:a][bgm]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+        result2 = subprocess.run(cmd, capture_output=True, text=True)
+        if result2.returncode != 0:
+            log(f"   ❌ BGM mixing failed, continuing without music. Error: {result2.stderr[:100]}")
+            shutil.copy2(str(vo_path), str(output_path))
+            return output_path
+            
+    log("   ✅ BGM mixed successfully!")
+    return output_path
 
 
 def get_audio_duration(audio_path):
@@ -670,6 +703,8 @@ def build_video():
         subtitle_style = data.get('subtitle_style', 'word_by_word')
         transition_effect = data.get('transition', 'none')
         transition_duration = float(data.get('transition_duration', 0.5))
+        add_bgm = data.get('add_bgm', True) # Defaults to True if you don't send it
+        bgm_volume = float(data.get('bgm_volume', 0.2)) # 20% volume
 
         if not full_audio_url:
             return jsonify({"success": False, "error": "full_audio_url required"}), 400
@@ -709,6 +744,24 @@ def build_video():
         transcribed_words, full_transcript = transcribe_audio_with_whisper(full_audio_wav)
         log(f"\n📄 TRANSCRIPT:\n   {full_transcript}")
         log(f"   ({len(transcribed_words)} words)")
+
+            # ── STEP 2.5: ADD BACKGROUND MUSIC ──
+        if add_bgm:
+            valid_bgm_exts = ('.mp3', '.wav', '.m4a', '.ogg')
+            bgm_files = [f for f in BGM_DIR.iterdir() if f.is_file() and f.suffix.lower() in valid_bgm_exts]
+            
+            if not bgm_files:
+                log("\n>>> STEP 2.5: ADD BGM (Skipped - No music found in ./assets/bgm/)")
+            else:
+                log("\n>>> STEP 2.5: ADD BACKGROUND MUSIC")
+                chosen_bgm = random.choice(bgm_files)
+                mixed_audio_wav = work_dir / "full_audio_mixed.wav"
+                
+                # Mix them together
+                mix_background_music(full_audio_wav, chosen_bgm, mixed_audio_wav, volume=bgm_volume)
+                
+                # Replace the old audio path with the newly mixed one for the rest of the script
+                full_audio_wav = mixed_audio_wav
 
         # ── STEP 3: ALIGN SCENES ──
         log("\n>>> STEP 3: ALIGN SCENES (Global Search + Precise Alignment)")
