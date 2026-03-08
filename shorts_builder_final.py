@@ -12,7 +12,7 @@ import random
 import subprocess
 import requests
 import base64
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from pathlib import Path
 import shutil
 from datetime import datetime
@@ -34,9 +34,45 @@ app = Flask(__name__)
 TEMP_DIR = Path("./temp/shorts_builder")
 OUTPUT_DIR = Path("./output/shorts_output")
 BGM_DIR = Path("./assets/bgm")   
+CONFIG_PATH = Path("./config.json")
 TEMP_DIR.mkdir(parents=True, exist_ok=True)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 BGM_DIR.mkdir(parents=True, exist_ok=True)
+
+DEFAULT_CONFIG = {
+    "audio": {
+        "add_bgm_by_default": True,
+        "default_bgm_volume": 0.2
+    },
+    "subtitles": {
+        "font_name": "Impact",
+        "font_size_word": 90,
+        "font_size_highlight": 72,
+        "font_color_primary": "&H0000FFFF",  # Yellow in ASS format (AABBGGRR)
+        "font_color_white": "&H00FFFFFF",    # White in ASS format
+        "margin_v": 150,                     # Vertical Position (Higher = further up the screen)
+        "alignment": 2                       # 2 = Bottom Center, 5 = Middle Center, 8 = Top Center
+    },
+    "video": {
+        "default_transition": "none",
+        "default_transition_duration": 0.5
+    }
+}
+
+def load_config():
+    if not CONFIG_PATH.exists():
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(DEFAULT_CONFIG, f, indent=4)
+        return DEFAULT_CONFIG
+    try:
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        log(f"⚠️ Error reading config.json, using defaults: {e}")
+        return DEFAULT_CONFIG
+
+# Load it globally when the script starts
+CONFIG = load_config()
 
 # Words too common to match on
 SKIP_WORDS = frozenset({
@@ -491,8 +527,16 @@ def generate_word_subtitles(word_timestamps, ass_path, style="word_by_word"):
 
     if style == "highlight":
         return generate_highlight_subtitles(word_timestamps, ass_path)
+    
+    # Load from config
+    sub_cfg = CONFIG['subtitles']
+    font_name = sub_cfg.get('font_name', 'Impact')
+    font_size = sub_cfg.get('font_size_word', 90)
+    color = sub_cfg.get('font_color_primary', '&H0000FFFF')
+    margin_v = sub_cfg.get('margin_v', 150)
+    align = sub_cfg.get('alignment', 2)
 
-    header = """[Script Info]
+    header = f"""[Script Info]
 Title: YouTube Shorts Subtitles
 ScriptType: v4.00+
 PlayResX: 1080
@@ -502,7 +546,7 @@ ScaledBorderAndShadow: yes
 
 [V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Word,Impact,90,&H0000FFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,2,10,10,100,1
+Style: Word,{font_name},{font_size},{color},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,5,2,{align},10,10,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
@@ -531,22 +575,33 @@ def generate_highlight_subtitles(word_timestamps, ass_path, words_per_group=4):
     """Groups of words, current highlighted yellow, rest white - at BOTTOM"""
     log(f"   📝 Generating highlight subtitles...")
 
-    header = """[Script Info]
+    # Load from config
+    sub_cfg = CONFIG['subtitles']
+    font_name = sub_cfg.get('font_name', 'Impact')
+    font_size = sub_cfg.get('font_size_highlight', 72)
+    color_pri = sub_cfg.get('font_color_primary', '&H0000FFFF')
+    color_wht = sub_cfg.get('font_color_white', '&H00FFFFFF')
+    margin_v = sub_cfg.get('margin_v', 150)
+    align = sub_cfg.get('alignment', 2)
+
+    header = f"""[Script Info]
 Title: YouTube Shorts Subtitles
 ScriptType: v4.00+
 PlayResX: 1080
 PlayResY: 1920
 WrapStyle: 0
-ScaledBorderAndShadow: yes[V4+ Styles]
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
 Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: Highlight,Impact,72,&H00FFFFFF,&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,2,30,30,100,1
+Style: Highlight,{font_name},{font_size},{color_wht},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,{align},30,30,{margin_v},1
 
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
-
+    # (Update the parts list loop below so it uses the correct color)
     events = []
-    groups =[word_timestamps[i:i+words_per_group]
+    groups = [word_timestamps[i:i+words_per_group]
               for i in range(0, len(word_timestamps), words_per_group)]
 
     for group in groups:
@@ -560,8 +615,9 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 if not wt:
                     continue
                 if j == wi:
-                    parts.append(r"{\c&H0000FFFF&\fscx110\fscy110}" + wt +
-                                 r"{\c&H00FFFFFF&\fscx100\fscy100}")
+                    # Dynamically inject the primary color for the highlighted word
+                    parts.append(r"{\c" + color_pri + r"&\fscx110\fscy110}" + wt +
+                                 r"{\c" + color_wht + r"&\fscx100\fscy100}")
                 else:
                     parts.append(wt)
 
@@ -583,7 +639,7 @@ def burn_subtitles(video_path, ass_path, output_path):
     cmd =['ffmpeg', '-i', str(video_path),
            '-vf', f"ass='{ass_str}'",
            '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'medium',
-           '-pix_fmt', 'yuv420p', '-y', str(output_path)]
+           '-pix_fmt', 'yuv420p', '-map_metadata', '-1', '-y', str(output_path)] # <--- Added map_metadata
 
     result = subprocess.run(cmd, capture_output=True, text=True)
     if result.returncode != 0:
@@ -591,7 +647,7 @@ def burn_subtitles(video_path, ass_path, output_path):
         cmd2 =['ffmpeg', '-i', str(video_path),
                 '-vf', f"subtitles='{ass_str}'",
                 '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'medium',
-                '-pix_fmt', 'yuv420p', '-y', str(output_path)]
+                '-pix_fmt', 'yuv420p', '-map_metadata', '-1', '-y', str(output_path)] # <--- Added map_metadata
         result2 = subprocess.run(cmd2, capture_output=True, text=True)
         if result2.returncode != 0:
             log("      ⚠️  Using drawtext fallback...")
@@ -703,8 +759,8 @@ def build_video():
         subtitle_style = data.get('subtitle_style', 'word_by_word')
         transition_effect = data.get('transition', 'none')
         transition_duration = float(data.get('transition_duration', 0.5))
-        add_bgm = data.get('add_bgm', True) # Defaults to True if you don't send it
-        bgm_volume = float(data.get('bgm_volume', 0.2)) # 20% volume
+        add_bgm = data.get('add_bgm', CONFIG['audio']['add_bgm_by_default'])
+        bgm_volume = float(data.get('bgm_volume', CONFIG['audio']['default_bgm_volume']))
 
         if not full_audio_url:
             return jsonify({"success": False, "error": "full_audio_url required"}), 400
@@ -887,17 +943,19 @@ def build_video():
         log(f"✅ DONE! {final_output} ({file_size_mb} MB)")
         log("=" * 60)
 
+        video_id = safe_title 
+        download_url = f"/download/{video_id}"
+
         return jsonify({
-            "success": True,
-            "version": "3.7-beta",
-            "title": title,
-            "output_path": str(final_output),
-            "scenes_processed": scenes_processed,
-            "file_size_mb": file_size_mb,
-            "subtitles": subtitles_enabled,
-            "transition": transition_effect,
-            "transition_duration": transition_duration,
-            "transcript_preview": full_transcript[:200]
+        "success": True,
+        "version": "3.7-beta",
+        "video_id": video_id,
+        "download_url": download_url,
+        "title": title,
+        "scenes_processed": scenes_processed,
+        "file_size_mb": file_size_mb,
+        "subtitles": subtitles_enabled,
+        "transcript_preview": full_transcript[:200]
         }), 200
 
     except Exception as e:
@@ -905,6 +963,23 @@ def build_video():
         log(traceback.format_exc())
         return jsonify({"success": False, "error": str(e)}), 500
 
+@app.route('/download/<video_id>', methods=['GET'])
+def download_video(video_id):
+    # Sanitize the ID for security
+    safe_id = "".join(c for c in video_id if c.isalnum() or c in ('_', '-'))
+    file_path = OUTPUT_DIR / f"{safe_id}.mp4"
+    
+    if not file_path.exists():
+        return jsonify({"error": "Video not found or already deleted"}), 404
+        
+    log(f" 📤 Streaming video to Make.com: {safe_id}.mp4")
+    
+    return send_file(
+        file_path,
+        mimetype='video/mp4',
+        as_attachment=True,
+        download_name=f"{safe_id}.mp4"
+    )
 
 if __name__ == '__main__':
     log("=" * 60)

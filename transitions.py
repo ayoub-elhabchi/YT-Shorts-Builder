@@ -254,6 +254,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
     '-c:a', 'aac',
     '-b:a', '128k',
     '-shortest',
+    '-map_metadata', '-1',
     '-y', str(output_path)
 ]
 
