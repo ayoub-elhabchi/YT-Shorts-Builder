@@ -35,11 +35,11 @@ try:
 except ImportError:
     get_random_ken_burns_effect = None
 
-    # Overlays module
+ # Overlays module
 try:
-    from overlays import apply_video_overlay
+    from overlays import apply_scene_overlays
 except ImportError:
-    apply_video_overlay = None
+    apply_scene_overlays = None
 
 app = Flask(__name__)
 
@@ -655,7 +655,7 @@ def burn_subtitles(video_path, ass_path, output_path):
 
     cmd =['ffmpeg', '-i', str(video_path),
            '-vf', f"ass='{ass_str}'",
-           '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'medium',
+           '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
            '-pix_fmt', 'yuv420p', '-map_metadata', '-1', '-y', str(output_path)] # <--- Added map_metadata
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -663,7 +663,7 @@ def burn_subtitles(video_path, ass_path, output_path):
         log("      ⚠️  ASS failed, trying subtitles filter...")
         cmd2 =['ffmpeg', '-i', str(video_path),
                 '-vf', f"subtitles='{ass_str}'",
-                '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'medium',
+                '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
                 '-pix_fmt', 'yuv420p', '-map_metadata', '-1', '-y', str(output_path)] # <--- Added map_metadata
         result2 = subprocess.run(cmd2, capture_output=True, text=True)
         if result2.returncode != 0:
@@ -704,7 +704,7 @@ def burn_subtitles_drawtext(video_path, ass_path, output_path):
         )
 
     cmd =['ffmpeg', '-i', str(video_path), '-vf', ",".join(filters),
-           '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'medium',
+           '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
            '-pix_fmt', 'yuv420p', '-y', str(output_path)]
     subprocess.run(cmd, check=True, capture_output=True)
     log("   ✅ Drawtext applied!")
@@ -945,39 +945,42 @@ def build_video():
             concatenate_videos(video_clips, str(final_output))
             scenes_processed = len(video_clips)
 
-                # ── STEP 5: FOREGROUND OVERLAY ──
-        if use_overlay and apply_video_overlay:
-            valid_exts = ('.mp4', '.mov', '.webm')
-            avail_overlays = [f for f in OVERLAYS_DIR.iterdir() if f.is_file() and f.suffix.lower() in valid_exts]
+                # ── STEP 5: FOREGROUND OVERLAY (SCENE-SPECIFIC) ──
+        if apply_scene_overlays:
+            log("\n>>> STEP 5: FOREGROUND OVERLAYS (Parsing Scenes...)")
             
-            if not avail_overlays:
-                log("\n>>> STEP 5: OVERLAY (Skipped - No videos found in ./assets/overlays/)")
-            else:
-                log(f"\n>>> STEP 5: ADD FOREGROUND OVERLAY (Opacity: {overlay_opacity})")
+            scene_overlays = []
+            for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
+                overlay_file = scene.get('overlay')
                 
-                # Check if JSON asked for a specific file (e.g., "dust.mp4"), otherwise pick random
-                chosen_overlay = None
-                if isinstance(use_overlay, str):
-                    target = OVERLAYS_DIR / use_overlay
+                if overlay_file and str(overlay_file).lower() != "false":
+                    target = OVERLAYS_DIR / overlay_file
                     if target.exists():
-                        chosen_overlay = target
-                
-                if not chosen_overlay:
-                    chosen_overlay = random.choice(avail_overlays)
-                    
-                log(f"   🪄 Using overlay: {chosen_overlay.name}")
+                        opacity = float(scene.get('overlay_opacity', CONFIG['video'].get('overlay_opacity', 0.35)))
+                        scene_overlays.append({
+                            'file': target,
+                            'start': timing['start'],
+                            'end': timing['end'],
+                            'opacity': opacity
+                        })
+                        log(f"   🪄 Scene {idx}: Applied {overlay_file} ({timing['start']}s → {timing['end']}s)")
+                    else:
+                        log(f"   ⚠️ Scene {idx}: Overlay '{overlay_file}' not found in folder!")
+            
+            if scene_overlays:
                 with_overlay_mp4 = work_dir / "video_with_overlay.mp4"
-                
                 try:
-                    apply_video_overlay(str(final_output), str(chosen_overlay), str(with_overlay_mp4), opacity=overlay_opacity)
+                    apply_scene_overlays(str(final_output), scene_overlays, str(with_overlay_mp4))
                     if with_overlay_mp4.exists():
                         final_output.unlink()
                         with_overlay_mp4.rename(final_output)
-                        log("   ✅ Overlay applied!")
+                        log("   ✅ Specific Overlays applied successfully!")
                 except Exception as e:
                     log(f"   ❌ Overlay failed, keeping original video. Error: {e}")
+            else:
+                log("   ⏭️ No valid scene overlays requested. Skipped.")
         else:
-            log("\n>>> STEP 5: OVERLAY SKIPPED")    
+            log("\n>>> STEP 5: OVERLAY MODULE MISSING - SKIPPED")   
 
         # ── STEP 6: SUBTITLES ──
         if subtitles_enabled and transcribed_words:

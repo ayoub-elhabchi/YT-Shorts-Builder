@@ -72,7 +72,8 @@ def apply_ken_burns(img, progress, effect_type, width=1080, height=1920):
     x = max(0, min(x, max_x))
     y = max(0, min(y, max_y))
 
-    box = (int(x), int(y), int(x + crop_w), int(y + crop_h))
+    # FIX: Keep floats for sub-pixel precision. Do NOT use int() or crop().
+    # Passing the 'box' directly into resize forces Pillow to render perfectly smooth decimals.
+    box = (x, y, x + crop_w, y + crop_h)
     
-    # Crop the math box out of the original image, and resize to 1080x1920
-    return img.crop(box).resize((width, height), RESAMPLE_FILTER)
+    return img.resize((width, height), resample=RESAMPLE_FILTER, box=box)
