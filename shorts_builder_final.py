@@ -35,6 +35,12 @@ try:
 except ImportError:
     get_random_ken_burns_effect = None
 
+    # Overlays module
+try:
+    from overlays import apply_video_overlay
+except ImportError:
+    apply_video_overlay = None
+
 app = Flask(__name__)
 
 TEMP_DIR = Path("./temp/shorts_builder")
@@ -58,13 +64,15 @@ DEFAULT_CONFIG = {
         "font_size_highlight": 72,
         "font_color_primary": "&H0000FFFF",  # Yellow in ASS format (AABBGGRR)
         "font_color_white": "&H00FFFFFF",    # White in ASS format
-        "margin_v": 150,                     # Vertical Position (Higher = further up the screen)
+        "margin_v": 350,                     # Vertical Position (Higher = further up the screen)
         "alignment": 2                       # 2 = Bottom Center, 5 = Middle Center, 8 = Top Center
     },
     "video": {
         "default_transition": "none",
         "default_transition_duration": 0.5,
-        "ken_burns_movement": True
+        "ken_burns_movement": True,
+        "use_overlay": True,                
+        "overlay_opacity": 0.35              
     }
 }
 
@@ -771,6 +779,8 @@ def build_video():
         add_bgm = data.get('add_bgm', CONFIG['audio']['add_bgm_by_default'])
         bgm_volume = float(data.get('bgm_volume', CONFIG['audio']['default_bgm_volume']))
         use_ken_burns = data.get('ken_burns', CONFIG['video'].get('ken_burns_movement', True))
+        use_overlay = data.get('overlay', CONFIG['video'].get('use_overlay', True))
+        overlay_opacity = float(data.get('overlay_opacity', CONFIG['video'].get('overlay_opacity', 0.35)))
 
         if not full_audio_url:
             return jsonify({"success": False, "error": "full_audio_url required"}), 400
@@ -934,6 +944,40 @@ def build_video():
             log(f"\n>>> STEP 5: CONCATENATE {len(video_clips)} CLIPS")
             concatenate_videos(video_clips, str(final_output))
             scenes_processed = len(video_clips)
+
+                # ── STEP 5: FOREGROUND OVERLAY ──
+        if use_overlay and apply_video_overlay:
+            valid_exts = ('.mp4', '.mov', '.webm')
+            avail_overlays = [f for f in OVERLAYS_DIR.iterdir() if f.is_file() and f.suffix.lower() in valid_exts]
+            
+            if not avail_overlays:
+                log("\n>>> STEP 5: OVERLAY (Skipped - No videos found in ./assets/overlays/)")
+            else:
+                log(f"\n>>> STEP 5: ADD FOREGROUND OVERLAY (Opacity: {overlay_opacity})")
+                
+                # Check if JSON asked for a specific file (e.g., "dust.mp4"), otherwise pick random
+                chosen_overlay = None
+                if isinstance(use_overlay, str):
+                    target = OVERLAYS_DIR / use_overlay
+                    if target.exists():
+                        chosen_overlay = target
+                
+                if not chosen_overlay:
+                    chosen_overlay = random.choice(avail_overlays)
+                    
+                log(f"   🪄 Using overlay: {chosen_overlay.name}")
+                with_overlay_mp4 = work_dir / "video_with_overlay.mp4"
+                
+                try:
+                    apply_video_overlay(str(final_output), str(chosen_overlay), str(with_overlay_mp4), opacity=overlay_opacity)
+                    if with_overlay_mp4.exists():
+                        final_output.unlink()
+                        with_overlay_mp4.rename(final_output)
+                        log("   ✅ Overlay applied!")
+                except Exception as e:
+                    log(f"   ❌ Overlay failed, keeping original video. Error: {e}")
+        else:
+            log("\n>>> STEP 5: OVERLAY SKIPPED")    
 
         # ── STEP 6: SUBTITLES ──
         if subtitles_enabled and transcribed_words:

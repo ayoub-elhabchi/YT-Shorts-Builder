@@ -4,9 +4,10 @@ import json
 url = "http://localhost:5000/build"
 
 data = {
-  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V6",
+  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V7",
   "full_audio_url": "https://drive.google.com/uc?id=1RXR1hcJ6HsosIZoSWJi-wD4VHV9C1A9u&export=download",
   "subtitles": True,
+  # "overlay": False,
   "subtitle_style": "word_by_word",
   "transition": "fade",
   "transition_duration": 0.5,
