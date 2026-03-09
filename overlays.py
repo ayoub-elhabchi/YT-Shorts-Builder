@@ -39,7 +39,8 @@ def apply_scene_overlays(base_video, scene_overlays, output_path):
         filter_chains.append(f"[{in_idx}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,format=yuv420p[ov_scaled_{i}]")
         
         # Blend it using the timeline 'enable' feature
-        filter_chains.append(f"[{current_v}][ov_scaled_{i}]blend=all_mode=screen:all_opacity={opacity}:enable='between(t,{start},{end})'[v_b_{i}]")
+                # Blend it using the timeline 'enable' feature
+        filter_chains.append(f"[{current_v}][ov_scaled_{i}]blend=c0_mode=screen:c1_mode=normal:c2_mode=normal:all_opacity={opacity}:enable='between(t,{start},{end})'[v_b_{i}]")
         current_v = f"v_b_{i}"
 
     cmd.extend(['-filter_complex', ";".join(filter_chains)])
