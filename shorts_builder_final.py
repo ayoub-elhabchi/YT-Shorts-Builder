@@ -72,7 +72,7 @@ DEFAULT_CONFIG = {
         "default_transition_duration": 0.5,
         "ken_burns_movement": True,
         "use_overlay": True,                
-        "overlay_opacity": 0.35              
+        "overlay_opacity": 0.1              
     }
 }
 
@@ -778,9 +778,10 @@ def build_video():
         transition_duration = float(data.get('transition_duration', 0.5))
         add_bgm = data.get('add_bgm', CONFIG['audio']['add_bgm_by_default'])
         bgm_volume = float(data.get('bgm_volume', CONFIG['audio']['default_bgm_volume']))
+                # Global Master Switches
         use_ken_burns = data.get('ken_burns', CONFIG['video'].get('ken_burns_movement', True))
-        use_overlay = data.get('overlay', CONFIG['video'].get('use_overlay', True))
-        overlay_opacity = float(data.get('overlay_opacity', CONFIG['video'].get('overlay_opacity', 0.35)))
+        global_use_overlay = data.get('use_overlay', CONFIG['video'].get('use_overlay', True))
+        global_overlay_opacity = float(data.get('overlay_opacity', CONFIG['video'].get('overlay_opacity', 0.15)))
 
         if not full_audio_url:
             return jsonify({"success": False, "error": "full_audio_url required"}), 400
@@ -800,9 +801,8 @@ def build_video():
         log(f"📊 Scenes: {len(scenes)}")
         log(f"📝 Subtitles: {subtitles_enabled} ({subtitle_style})")
         log(f"🔄 Transition: {transition_effect} ({transition_duration}s)")
-
-        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
-        safe_title = safe_title.replace(' ', '_')[:50]
+        # Keep exact spaces and quotes, just remove illegal OS path characters
+        safe_title = str(title).translate(str.maketrans('', '', '<>:"/\\|?*'))
 
         work_dir = TEMP_DIR / f"build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         work_dir.mkdir(exist_ok=True)
@@ -945,27 +945,31 @@ def build_video():
             concatenate_videos(video_clips, str(final_output))
             scenes_processed = len(video_clips)
 
-                # ── STEP 5: FOREGROUND OVERLAY (SCENE-SPECIFIC) ──
-        if apply_scene_overlays:
+                        # ── STEP 5: FOREGROUND OVERLAY (SCENE-SPECIFIC) ──
+        # Only run if the module exists AND the global master switch is True
+        if apply_scene_overlays and str(global_use_overlay).lower() == 'true':
             log("\n>>> STEP 5: FOREGROUND OVERLAYS (Parsing Scenes...)")
             
             scene_overlays = []
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
-                overlay_file = scene.get('overlay')
+                # 'overlay' is now strictly used to define the filename inside a scene
+                scene_overlay_file = scene.get('overlay')
                 
-                if overlay_file and str(overlay_file).lower() != "false":
-                    target = OVERLAYS_DIR / overlay_file
+                if scene_overlay_file and str(scene_overlay_file).lower() != "false":
+                    target = OVERLAYS_DIR / scene_overlay_file
                     if target.exists():
-                        opacity = float(scene.get('overlay_opacity', CONFIG['video'].get('overlay_opacity', 0.35)))
+                        # Use scene opacity if provided, otherwise fallback to global opacity
+                        scene_opacity = float(scene.get('overlay_opacity', global_overlay_opacity))
+                        
                         scene_overlays.append({
                             'file': target,
                             'start': timing['start'],
                             'end': timing['end'],
-                            'opacity': opacity
+                            'opacity': scene_opacity
                         })
-                        log(f"   🪄 Scene {idx}: Applied {overlay_file} ({timing['start']}s → {timing['end']}s)")
+                        log(f"   🪄 Scene {idx}: Applied {scene_overlay_file} ({timing['start']}s → {timing['end']}s)")
                     else:
-                        log(f"   ⚠️ Scene {idx}: Overlay '{overlay_file}' not found in folder!")
+                        log(f"   ⚠️ Scene {idx}: Overlay '{scene_overlay_file}' not found in folder!")
             
             if scene_overlays:
                 with_overlay_mp4 = work_dir / "video_with_overlay.mp4"
@@ -980,7 +984,7 @@ def build_video():
             else:
                 log("   ⏭️ No valid scene overlays requested. Skipped.")
         else:
-            log("\n>>> STEP 5: OVERLAY MODULE MISSING - SKIPPED")   
+            log("\n>>> STEP 5: OVERLAYS DISABLED GLOBALLY (or module missing) - SKIPPED") 
 
         # ── STEP 6: SUBTITLES ──
         if subtitles_enabled and transcribed_words:
@@ -1029,19 +1033,19 @@ def build_video():
 @app.route('/download/<video_id>', methods=['GET'])
 def download_video(video_id):
     # Sanitize the ID for security
-    safe_id = "".join(c for c in video_id if c.isalnum() or c in ('_', '-'))
-    file_path = OUTPUT_DIR / f"{safe_id}.mp4"
+    # safe_id = "".join(c for c in video_id if c.isalnum() or c in ('_', '-'))
+    file_path = OUTPUT_DIR / f"{video_id}.mp4"
     
     if not file_path.exists():
         return jsonify({"error": "Video not found or already deleted"}), 404
         
-    log(f" 📤 Streaming video to Make.com: {safe_id}.mp4")
+    log(f" 📤 Streaming video to Make.com: {video_id}.mp4")
     
     return send_file(
         file_path,
         mimetype='video/mp4',
         as_attachment=True,
-        download_name=f"{safe_id}.mp4"
+        download_name=f"{video_id}.mp4"
     )
 
 if __name__ == '__main__':
