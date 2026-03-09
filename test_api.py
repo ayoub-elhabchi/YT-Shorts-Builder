@@ -4,7 +4,7 @@ import json
 url = "http://localhost:5000/build"
 
 data = {
-  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V3",
+  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V2",
   "full_audio_url": "https://drive.google.com/uc?id=1RXR1hcJ6HsosIZoSWJi-wD4VHV9C1A9u&export=download",
   "subtitles": True,
   "subtitle_style": "word_by_word",
@@ -18,7 +18,7 @@ data = {
       "image_url": "https://drive.google.com/uc?id=18BB4RFla_7xrRBLJYWJCKTJDheuKtfZK&export=download",
       "transition": "fade",
       "transition_duration": 0.5,
-      "overlay": "documentary.mp4",
+      # "overlay": "documentary.mp4",
       "ken_burns_effect": "zoom_in"
     },
     {
@@ -27,7 +27,7 @@ data = {
       "image_url": "https://drive.google.com/uc?id=1ax2HAB08TrGSX09PHCFgjOqG1g9ILIuV&export=download",
       "transition": "zoom",
       "transition_duration": 0.6,
-      "overlay": "documentary_2.mp4",
+      # "overlay": "documentary_2.mp4",
       "ken_burns_effect": "pan_right"
     },
     {
@@ -36,7 +36,14 @@ data = {
       "image_url": "https://drive.google.com/uc?id=1kyzIq2J1MZqka5LiHPKW7B_hF-uVi5SB&export=download",
       "transition": "fade_black",
       "transition_duration": 0.8,
-      "ken_burns_effect": "zoom_out"
+      "ken_burns_effect": "zoom_out",
+      "evidence_card": {
+        "content": {
+          "title": "RECOVERED LOGBOOK",
+          "date": "March 1803",
+          "excerpt": "Bronze machine... gears turning without power. Defies known chronology."
+        }
+      }
     },
     {
       "index": 4,

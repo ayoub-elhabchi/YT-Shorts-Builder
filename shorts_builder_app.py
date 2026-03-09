@@ -41,6 +41,13 @@ try:
 except ImportError:
     apply_scene_overlays = None
 
+# Evidence module
+try:
+    from evidence import create_evidence_image, apply_evidence_overlays
+except ImportError:
+    create_evidence_image = None
+    apply_evidence_overlays = None
+
 app = Flask(__name__)
 
 TEMP_DIR = Path("./temp/shorts_builder")
@@ -801,8 +808,9 @@ def build_video():
         log(f"📊 Scenes: {len(scenes)}")
         log(f"📝 Subtitles: {subtitles_enabled} ({subtitle_style})")
         log(f"🔄 Transition: {transition_effect} ({transition_duration}s)")
-        # Keep exact spaces and quotes, just remove illegal OS path characters
-        safe_title = str(title).translate(str.maketrans('', '', '<>:"/\\|?*'))
+        
+        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
+        safe_title = safe_title.replace(' ', '_')[:50]
 
         work_dir = TEMP_DIR / f"build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         work_dir.mkdir(exist_ok=True)
@@ -986,6 +994,43 @@ def build_video():
         else:
             log("\n>>> STEP 5: OVERLAYS DISABLED GLOBALLY (or module missing) - SKIPPED") 
 
+
+                # ── STEP 5.5: EVIDENCE CARDS ──
+        if apply_evidence_overlays and create_evidence_image:
+            log("\n>>> STEP 5.5: EVIDENCE CARDS (Checking Scenes...)")
+            
+            evidence_timeline = []
+            for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
+                ev_data = scene.get('evidence_card')
+                if ev_data and isinstance(ev_data, dict):
+                    # Generate the transparent PNG for this specific scene
+                    png_path = work_dir / f"evidence_scene_{idx}.png"
+                    
+                    # Pass the content dictionary if it exists, otherwise pass the root
+                    content_dict = ev_data.get('content', ev_data)
+                    
+                    create_evidence_image(content_dict, str(png_path))
+                    
+                    evidence_timeline.append({
+                        'image': png_path,
+                        'start': timing['start'],
+                        'end': timing['end']
+                    })
+                    log(f"   📋 Scene {idx}: Evidence Card generated ({timing['start']}s → {timing['end']}s)")
+
+            if evidence_timeline:
+                with_evidence_mp4 = work_dir / "video_with_evidence.mp4"
+                try:
+                    apply_evidence_overlays(str(final_output), evidence_timeline, str(with_evidence_mp4))
+                    if with_evidence_mp4.exists():
+                        final_output.unlink()
+                        with_evidence_mp4.rename(final_output)
+                        log("   ✅ Evidence Cards applied successfully!")
+                except Exception as e:
+                    log(f"   ❌ Evidence overlay failed, keeping previous video. Error: {e}")
+            else:
+                log("   ⏭️ No evidence cards requested. Skipped.")
+                
         # ── STEP 6: SUBTITLES ──
         if subtitles_enabled and transcribed_words:
             log(f"\n>>> STEP 6: SUBTITLES ({subtitle_style})")
@@ -1033,19 +1078,19 @@ def build_video():
 @app.route('/download/<video_id>', methods=['GET'])
 def download_video(video_id):
     # Sanitize the ID for security
-    # safe_id = "".join(c for c in video_id if c.isalnum() or c in ('_', '-'))
-    file_path = OUTPUT_DIR / f"{video_id}.mp4"
+    safe_id = "".join(c for c in video_id if c.isalnum() or c in ('_', '-'))
+    file_path = OUTPUT_DIR / f"{safe_id}.mp4"
     
     if not file_path.exists():
         return jsonify({"error": "Video not found or already deleted"}), 404
         
-    log(f" 📤 Streaming video to Make.com: {video_id}.mp4")
+    log(f" 📤 Streaming video to Make.com: {safe_id}.mp4")
     
     return send_file(
         file_path,
         mimetype='video/mp4',
         as_attachment=True,
-        download_name=f"{video_id}.mp4"
+        download_name=f"{safe_id}.mp4"
     )
 
 if __name__ == '__main__':
