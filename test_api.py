@@ -4,73 +4,96 @@ import json
 url = "http://localhost:5000/build"
 
 data = {
-  "title": "Georgia's Lost Treasury - 2000 Year Old Computer V2",
-  "full_audio_url": "https://drive.google.com/uc?id=1RXR1hcJ6HsosIZoSWJi-wD4VHV9C1A9u&export=download",
-  "subtitles": True,
-  "subtitle_style": "word_by_word",
-  "transition": "fade",
+    "title": "Greek Fire - The Weapon That Burned Water",
+  "full_audio_url": "https://drive.google.com/file/d/1QfBGW5-Oznrgn7WKEtB7vkcKaKuUCpDD/view?usp=drive_link",
+
+  "subtitles": True,           
+  "subtitle_style": "word_by_word", 
+"transition": "fade",
   "transition_duration": 0.5,
-  "overlay_opacity": 0.2,
+  "overlay_opacity": 0.2, 
+
   "scenes": [
     {
       "index": 1,
-      "text": "A cargo ship vanished in 1803, swallowed by the Atlantic. Its wreck, sealed for centuries, held a secret.",
-      "image_url": "https://drive.google.com/uc?id=18BB4RFla_7xrRBLJYWJCKTJDheuKtfZK&export=download",
-      "transition": "fade",
-      "transition_duration": 0.5,
-      # "overlay": "documentary.mp4",
-      "ken_burns_effect": "zoom_in"
-    },
+      "text": "They called it fire that ate the sea. A weapon no enemy could douse. Invisible, unstoppable.",
+      "image_url": "https://drive.google.com/uc?id=1L7MtccgOwmNYgGhbgrwD-1XBMQD8UiBE&export=download",
+       "transition": "fade",
+      "ken_burns_effect": "zoom_in",
+      "overlay": "documentary.mp4",
+      "evidence_card": {
+        "title": "",
+        "date": "",
+        "excerpt": ""
+      }
+},
     {
       "index": 2,
-      "text": "Dr. Elena Martinez stands on the deck of the research vessel. She watches the sonar‑lit hull.",
-      "image_url": "https://drive.google.com/uc?id=1ax2HAB08TrGSX09PHCFgjOqG1g9ILIuV&export=download",
-      "transition": "zoom",
-      "transition_duration": 0.6,
-      # "overlay": "documentary_2.mp4",
-      "ken_burns_effect": "pan_right"
-    },
-    {
-      "index": 3,
-      "text": "Coordinates 34°12′N 58°23′W were logged in a sealed parchment. The recovered logbook described a bronze machine, gears turning without power. The object defies known chronology.",
-      "image_url": "https://drive.google.com/uc?id=1kyzIq2J1MZqka5LiHPKW7B_hF-uVi5SB&export=download",
-      "transition": "fade_black",
-      "transition_duration": 0.8,
-      "ken_burns_effect": "zoom_out",
-      "evidence_card": {
-        "content": {
-          "title": "RECOVERED LOGBOOK",
-          "date": "March 1803",
-          "excerpt": "Bronze machine... gears turning without power. Defies known chronology."
-        }
+      "text": "Byzantine Empire. 7th century. Invented under Emperor Leo III. Mixed sulfur, quicklime, oil. Launched from siphon tubes. To protect Constantinople. During the Arab siege of 674.",
+      "image_url": "https://drive.google.com/uc?id=1bDdOuKBrYLvwtbWfNkGcYBUR5MN4hL0O&export=download",
+"transition": "fade_black",
+      "ken_burns_effect": "pan_right",
+      "overlay": "documentary_2.mp4",
+    "evidence_card": {
+        "title": "",
+        "date": "",
+        "excerpt": ""
       }
     },
     {
-      "index": 4,
-      "text": "How could a 2,000‑year‑old computer survive in a wooden ship?",
-      "image_url": "https://drive.google.com/uc?id=1rRe2CdFeu8UAn8ErIxJNlUpZARrkxpbh&export=download",
-      "transition": "fade",
-      "transition_duration": 0.4,
+      "index": 3,
+      "text": "A captured Arabic chronicler described the blaze. Found in the Byzantine Naval Logbook of 674. The navy feared yet deployed it. Even water turned to flame.",
+      "image_url": "https://drive.google.com/uc?id=1qw1S4-W8TRjcb3jmbKMW59NG7-1Lc6Lh&export=download",
+ "transition": "zoom",
+      "ken_burns_effect": "zoom_in",
       "overlay": "dust.mp4",
-      "ken_burns_effect": "pan_up"
+            "evidence_card": {
+        "title": "NAVAL LOGBOOK 674",
+        "date": "674 AD",
+        "excerpt": "Entry describes fiery weapon extinguishing enemy ships."
+      }
+
+    },
+    {
+      "index": 4,
+      "text": "The original siphon rests sealed in a Turkish museum. The logbook survives in the Vatican archive. The formula remained a guarded state secret.",
+      "image_url": "https://drive.google.com/uc?id=1EPUrUxqetxYTovl-ePxqJzZ2K_QnPoRi&export=download",
+"transition": "slide_left",
+      "ken_burns_effect": "zoom_out",
+      "overlay": "documentary_3.mp4",
+      "evidence_card": {
+        "title": "",
+        "date": "",
+        "excerpt": ""
+      }
     },
     {
       "index": 5,
-      "text": "Not everyone sticks around till the end. But you did. The hunt continues. Don't fall behind.",
-      "image_url": "https://drive.google.com/uc?id=1v86tPDMNbE12iJGkznWc6OicWwaW4Te1&export=download",
-      "transition": "zoom",
-      "transition_duration": 0.6
+      "text": "Could the secret of Greek fire still be hidden today? The mystery lingers.",
+      "image_url": "https://drive.google.com/uc?id=1F85yMzImPK-bCY7N949zXn6gvhBOQ3FU&export=download",
+"transition": "fade",
+      "ken_burns_effect": "pan_up",
+      "overlay": "documentary_2.mp4",
+      "evidence_card": {
+        "title": "",
+        "date": "",
+        "excerpt": ""
+      }
     },
     {
       "index": 6,
-      "text": "The sealed chamber remains, its bronze plates cold. Future dives will test the limits of history.",
-      "image_url": "https://drive.google.com/uc?id=1IlZADJ8YNlRvOioeZeAIc2dk-e7TdJl4&export=download",
-      "transition": "fade_black",
-      "transition_duration": 0.8,
+      "text": "Not everyone sticks around till the end. But you did.",
+      "image_url": "https://drive.google.com/uc?id=1Jqm_XD1UQnQ2yHDcTEl0F5OSSnAcfga_&export=download",
+"transition": "fade_black",
+      "ken_burns_effect": "",
       "overlay": "documentary_4.mp4",
-      "ken_burns_effect": "pan_down"
+     "evidence_card": {
+        "title": "",
+        "date": "",
+        "excerpt": ""
+      }
     }
-  ]
+    ]
 }
 
 # data = {

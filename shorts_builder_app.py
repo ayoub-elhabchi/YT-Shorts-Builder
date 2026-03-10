@@ -663,6 +663,7 @@ def burn_subtitles(video_path, ass_path, output_path):
     cmd =['ffmpeg', '-i', str(video_path),
            '-vf', f"ass='{ass_str}'",
            '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
+           '-crf', '28',   # <--- ADDS COMPRESSION
            '-pix_fmt', 'yuv420p', '-map_metadata', '-1', '-y', str(output_path)] # <--- Added map_metadata
 
     result = subprocess.run(cmd, capture_output=True, text=True)
@@ -712,6 +713,7 @@ def burn_subtitles_drawtext(video_path, ass_path, output_path):
 
     cmd =['ffmpeg', '-i', str(video_path), '-vf', ",".join(filters),
            '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
+           '-crf', '28',   # <--- ADDS COMPRESSION 
            '-pix_fmt', 'yuv420p', '-y', str(output_path)]
     subprocess.run(cmd, check=True, capture_output=True)
     log("   ✅ Drawtext applied!")
@@ -1002,7 +1004,13 @@ def build_video():
             evidence_timeline = []
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
                 ev_data = scene.get('evidence_card')
-                if ev_data and isinstance(ev_data, dict):
+                
+                # FIX: Extract text and strip out any invisible spaces sent by Make.com
+                title_text = str(ev_data.get('title', '')).strip() if isinstance(ev_data, dict) else ""
+                excerpt_text = str(ev_data.get('excerpt', '')).strip() if isinstance(ev_data, dict) else ""
+                
+                # Only proceed if it's a dict AND actually has text left over
+                if ev_data and isinstance(ev_data, dict) and (title_text or excerpt_text):
                     # Generate the transparent PNG for this specific scene
                     png_path = work_dir / f"evidence_scene_{idx}.png"
                     

@@ -53,6 +53,7 @@ def apply_scene_overlays(base_video, scene_overlays, output_path):
         '-preset', 'superfast',
         '-pix_fmt', 'yuv420p',
         '-c:a', 'copy',
+        '-crf', '28',   # <--- ADDS COMPRESSION 
         '-map_metadata', '-1',
         '-shortest',             # <--- FIX: Forces FFmpeg to stop when the main video ends!
         '-y', str(output_path)

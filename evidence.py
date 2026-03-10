@@ -131,6 +131,7 @@ def apply_evidence_overlays(base_video, evidence_list, output_path):
         '-preset', 'superfast',
         '-pix_fmt', 'yuv420p',
         '-c:a', 'copy',
+        '-crf', '28',   # <--- ADDS COMPRESSION 
         '-map_metadata', '-1',
         '-y', str(output_path)
     ])
