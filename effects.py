@@ -26,6 +26,7 @@ def apply_ken_burns(img, progress, effect_type, width=1080, height=1920):
     Unlike normal static images, this zooms in to completely remove black borders
     and fills the entire vertical screen like a documentary.
     """
+    progress = max(0.0, min(1.0, float(progress)))
     img_w, img_h = img.size
     target_ratio = width / height
     img_ratio = img_w / img_h

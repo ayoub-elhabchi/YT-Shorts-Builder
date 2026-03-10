@@ -672,6 +672,7 @@ def burn_subtitles(video_path, ass_path, output_path):
         cmd2 =['ffmpeg', '-i', str(video_path),
                 '-vf', f"subtitles='{ass_str}'",
                 '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
+                '-movflags', '+faststart',
                 '-pix_fmt', 'yuv420p', '-map_metadata', '-1', '-y', str(output_path)] # <--- Added map_metadata
         result2 = subprocess.run(cmd2, capture_output=True, text=True)
         if result2.returncode != 0:
@@ -714,6 +715,7 @@ def burn_subtitles_drawtext(video_path, ass_path, output_path):
     cmd =['ffmpeg', '-i', str(video_path), '-vf', ",".join(filters),
            '-c:a', 'copy', '-c:v', 'libx264', '-preset', 'superfast',
            '-crf', '28',   # <--- ADDS COMPRESSION 
+           '-movflags', '+faststart',
            '-pix_fmt', 'yuv420p', '-y', str(output_path)]
     subprocess.run(cmd, check=True, capture_output=True)
     log("   ✅ Drawtext applied!")
@@ -811,8 +813,11 @@ def build_video():
         log(f"📝 Subtitles: {subtitles_enabled} ({subtitle_style})")
         log(f"🔄 Transition: {transition_effect} ({transition_duration}s)")
         
-        safe_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_')).strip()
-        safe_title = safe_title.replace(' ', '_')[:50]
+        # Keep original title for filename (human-readable)
+        clean_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_', '.')).strip()[:50]
+
+        # Create URL-safe version for video_id
+        safe_title = clean_title.replace(' ', '_').replace('-', '_')
 
         work_dir = TEMP_DIR / f"build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         work_dir.mkdir(exist_ok=True)
@@ -855,7 +860,7 @@ def build_video():
         scenes_timing = align_scenes_to_timestamps(transcribed_words, scene_texts)
 
         # ── STEP 4: BUILD VIDEO ──
-        final_output = OUTPUT_DIR / f"{safe_title}.mp4"
+        final_output = OUTPUT_DIR / f"{clean_title}.mp4"
 
         if transition_effect != 'none' or use_ken_burns:  # <--- EDITED THIS LINE
             log(f"\n>>> STEP 4: BUILD ADVANCED PATH (Transitions / Ken Burns)")
@@ -1085,20 +1090,20 @@ def build_video():
 
 @app.route('/download/<video_id>', methods=['GET'])
 def download_video(video_id):
-    # Sanitize the ID for security
-    safe_id = "".join(c for c in video_id if c.isalnum() or c in ('_', '-'))
-    file_path = OUTPUT_DIR / f"{safe_id}.mp4"
+    # Convert URL-safe back to original (underscores → spaces)
+    original_title = video_id.replace('___', ' - ').replace('_', ' ')
+    file_path = OUTPUT_DIR / f"{original_title}.mp4"
     
     if not file_path.exists():
         return jsonify({"error": "Video not found or already deleted"}), 404
         
-    log(f" 📤 Streaming video to Make.com: {safe_id}.mp4")
+    log(f" 📤 Streaming video to Make.com: {original_title}.mp4")
     
     return send_file(
         file_path,
         mimetype='video/mp4',
         as_attachment=True,
-        download_name=f"{safe_id}.mp4"
+        download_name=f"{original_title}.mp4"
     )
 
 if __name__ == '__main__':

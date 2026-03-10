@@ -333,7 +333,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                     img_target = scenes_data[0]['image']
                     if scenes_data[0].get('kb_effect'):
                         s_prog = (t - scenes_data[0]['start']) / max(0.1, scenes_data[0]['end'] - scenes_data[0]['start'])
-                        img_target = apply_ken_burns(scenes_data[0]['raw_image'], s_prog, scenes_data[0]['kb_effect'], width, height)
+                        img_target = apply_ken_burns(scenes_data[0]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[0]['kb_effect'], width, height)
                     
                     frame = make_transition_frame(black, img_target, 'fade', progress, width, height)
                     process.stdin.write(frame.tobytes())
@@ -349,7 +349,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                     img_source = scenes_data[-1]['image']
                     if scenes_data[-1].get('kb_effect'):
                         s_prog = (t - scenes_data[-1]['start']) / max(0.1, scenes_data[-1]['end'] - scenes_data[-1]['start'])
-                        img_source = apply_ken_burns(scenes_data[-1]['raw_image'], s_prog, scenes_data[-1]['kb_effect'], width, height)
+                        img_source = apply_ken_burns(scenes_data[-1]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[-1]['kb_effect'], width, height)
                         
                     frame = make_transition_frame(img_source, black, 'fade', progress, width, height)
                     process.stdin.write(frame.tobytes())

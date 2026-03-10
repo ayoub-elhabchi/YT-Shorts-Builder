@@ -4,7 +4,7 @@ import json
 url = "http://localhost:5000/build"
 
 data = {
-    "title": "Greek Fire - The Weapon That Burned Water",
+    "title": "Greek Fire - The Weapon That Burned Wate",
   "full_audio_url": "https://drive.google.com/file/d/1QfBGW5-Oznrgn7WKEtB7vkcKaKuUCpDD/view?usp=drive_link",
 
   "subtitles": True,           
@@ -20,7 +20,7 @@ data = {
       "image_url": "https://drive.google.com/uc?id=1L7MtccgOwmNYgGhbgrwD-1XBMQD8UiBE&export=download",
        "transition": "fade",
       "ken_burns_effect": "zoom_in",
-      "overlay": "documentary.mp4",
+      # "overlay": "documentary.mp4",
       "evidence_card": {
         "title": "",
         "date": "",
@@ -60,7 +60,7 @@ data = {
       "image_url": "https://drive.google.com/uc?id=1EPUrUxqetxYTovl-ePxqJzZ2K_QnPoRi&export=download",
 "transition": "slide_left",
       "ken_burns_effect": "zoom_out",
-      "overlay": "documentary_3.mp4",
+      # "overlay": "documentary_3.mp4",
       "evidence_card": {
         "title": "",
         "date": "",
