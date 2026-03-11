@@ -18,6 +18,9 @@ import shutil
 from datetime import datetime
 import traceback
 import re
+import threading
+import uuid
+import time
 
 # Transitions module
 try:
@@ -97,6 +100,22 @@ def load_config():
 
 # Load it globally when the script starts
 CONFIG = load_config()
+
+# ============================================================
+# JOB TRACKING FOR ASYNC PROCESSING
+# ============================================================
+JOBS = {}
+
+def update_job_status(job_id, status, **kwargs):
+    """Update job status with additional metadata"""
+    if job_id not in JOBS:
+        JOBS[job_id] = {'created_at': datetime.now()}
+    JOBS[job_id].update({"status": status, "updated_at": datetime.now(), **kwargs})
+    log(f"📊 Job {job_id[:8]}... → {status}")
+
+def get_job_status(job_id):
+    """Retrieve job status"""
+    return JOBS.get(job_id, {"status": "unknown"})
 
 # Words too common to match on
 SKIP_WORDS = frozenset({
@@ -768,18 +787,15 @@ def health_check():
         "transitions": VALID_TRANSITIONS
     })
 
-
-@app.route('/build', methods=['POST'])
-def build_video():
+def build_video_async(job_id, data, webhook_url, base_url):
+    """
+    Background thread function - builds video and sends webhook when done.
+    This is the actual build logic running in a separate thread.
+    """
     try:
-        data = request.get_json()
-        if not data:
-            return jsonify({"success": False, "error": "No JSON"}), 400
-
-        log("=" * 60)
-        log("🎬 BUILD v3.7 beta - Precise Alignment + Transitions")
-        log("=" * 60)
-
+        update_job_status(job_id, "processing", progress="Starting build...")
+        
+        # Extract all parameters (same as original build_video)
         title = data.get('title', f'video_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
         full_audio_url = data.get('full_audio_url')
         scenes = data.get('scenes', [])
@@ -789,22 +805,14 @@ def build_video():
         transition_duration = float(data.get('transition_duration', 0.5))
         add_bgm = data.get('add_bgm', CONFIG['audio']['add_bgm_by_default'])
         bgm_volume = float(data.get('bgm_volume', CONFIG['audio']['default_bgm_volume']))
-                # Global Master Switches
         use_ken_burns = data.get('ken_burns', CONFIG['video'].get('ken_burns_movement', True))
         global_use_overlay = data.get('use_overlay', CONFIG['video'].get('use_overlay', True))
         global_overlay_opacity = float(data.get('overlay_opacity', CONFIG['video'].get('overlay_opacity', 0.15)))
 
-        if not full_audio_url:
-            return jsonify({"success": False, "error": "full_audio_url required"}), 400
-        if not scenes:
-            return jsonify({"success": False, "error": "No scenes"}), 400
-
-        # Validate transition settings
+        # Validate
         if transition_effect not in VALID_TRANSITIONS:
-            log(f"   ⚠️  Unknown transition '{transition_effect}', falling back to 'none'")
             transition_effect = 'none'
         if transition_effect != 'none' and not PILLOW_AVAILABLE:
-            log("   ⚠️  Pillow not installed, transitions disabled")
             transition_effect = 'none'
         transition_duration = max(0.2, min(2.0, transition_duration))
 
@@ -813,63 +821,57 @@ def build_video():
         log(f"📝 Subtitles: {subtitles_enabled} ({subtitle_style})")
         log(f"🔄 Transition: {transition_effect} ({transition_duration}s)")
         
-        # Keep original title for filename (human-readable)
         clean_title = "".join(c for c in title if c.isalnum() or c in (' ', '-', '_', '.')).strip()[:50]
-
-        # Create URL-safe version for video_id
         safe_title = clean_title.replace(' ', '_').replace('-', '_')
 
         work_dir = TEMP_DIR / f"build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
         work_dir.mkdir(exist_ok=True)
 
-        # ── STEP 1: DOWNLOAD AUDIO ──
+        # STEP 1: DOWNLOAD AUDIO
         log("\n>>> STEP 1: DOWNLOAD AUDIO")
+        update_job_status(job_id, "processing", progress="Downloading audio...")
         raw_audio = work_dir / "full_audio_raw"
         download_file(full_audio_url, raw_audio)
         full_audio_wav = work_dir / "full_audio.wav"
         ensure_wav(raw_audio, full_audio_wav)
         total_duration = get_audio_duration(full_audio_wav)
 
-        # ── STEP 2: TRANSCRIBE ──
+        # STEP 2: TRANSCRIBE
         log("\n>>> STEP 2: TRANSCRIBE")
+        update_job_status(job_id, "processing", progress="Transcribing audio...")
         transcribed_words, full_transcript = transcribe_audio_with_whisper(full_audio_wav)
         log(f"\n📄 TRANSCRIPT:\n   {full_transcript}")
         log(f"   ({len(transcribed_words)} words)")
 
-            # ── STEP 2.5: ADD BACKGROUND MUSIC ──
+        # STEP 2.5: BGM
         if add_bgm:
             valid_bgm_exts = ('.mp3', '.wav', '.m4a', '.ogg')
             bgm_files = [f for f in BGM_DIR.iterdir() if f.is_file() and f.suffix.lower() in valid_bgm_exts]
             
-            if not bgm_files:
-                log("\n>>> STEP 2.5: ADD BGM (Skipped - No music found in ./assets/bgm/)")
-            else:
+            if bgm_files:
                 log("\n>>> STEP 2.5: ADD BACKGROUND MUSIC")
+                update_job_status(job_id, "processing", progress="Mixing background music...")
                 chosen_bgm = random.choice(bgm_files)
                 mixed_audio_wav = work_dir / "full_audio_mixed.wav"
-                
-                # Mix them together
                 mix_background_music(full_audio_wav, chosen_bgm, mixed_audio_wav, volume=bgm_volume)
-                
-                # Replace the old audio path with the newly mixed one for the rest of the script
                 full_audio_wav = mixed_audio_wav
 
-        # ── STEP 3: ALIGN SCENES ──
-        log("\n>>> STEP 3: ALIGN SCENES (Global Search + Precise Alignment)")
+        # STEP 3: ALIGN SCENES
+        log("\n>>> STEP 3: ALIGN SCENES")
+        update_job_status(job_id, "processing", progress="Aligning scenes to audio...")
         scene_texts = [s.get('text', '') for s in scenes]
         scenes_timing = align_scenes_to_timestamps(transcribed_words, scene_texts)
 
-        # ── STEP 4: BUILD VIDEO ──
+        # STEP 4: BUILD VIDEO
         final_output = OUTPUT_DIR / f"{clean_title}.mp4"
+        update_job_status(job_id, "processing", progress="Building video...")
 
-        if transition_effect != 'none' or use_ken_burns:  # <--- EDITED THIS LINE
-            log(f"\n>>> STEP 4: BUILD ADVANCED PATH (Transitions / Ken Burns)")
-
+        if transition_effect != 'none' or use_ken_burns:
+            log(f"\n>>> STEP 4: BUILD ADVANCED PATH")
             scenes_data = []
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
                 if timing['duration'] < 0.3:
                     continue
-
                 image_url = scene.get('image_url')
                 if not image_url:
                     continue
@@ -882,14 +884,15 @@ def build_video():
 
                 log(f"   📥 Scene {idx}: downloading image...")
                 image_path = work_dir / f"scene_{idx}_image.jpg"
+                
+                if idx > 1:
+                    time.sleep(1.5)
+                
                 download_file(image_url, image_path)
-
                 pil_img = prepare_image_for_shorts(image_path)
                 
-                # --- NEW KEN BURNS DATA ---
                 from PIL import Image
                 raw_img = Image.open(image_path).convert('RGB')
-                # Check if the JSON specified a valid effect, otherwise pick randomly
                 requested_fx = scene.get('ken_burns_effect')
                 if requested_fx in KEN_BURNS_EFFECTS:
                     kb_fx = requested_fx
@@ -898,20 +901,18 @@ def build_video():
 
                 scenes_data.append({
                     'image': pil_img,
-                    'raw_image': raw_img,     # <--- ADDED
-                    'kb_effect': kb_fx,       # <--- ADDED
+                    'raw_image': raw_img,
+                    'kb_effect': kb_fx,
                     'start': timing['start'],
                     'end': timing['end'],
                     'scene_index': idx,
                     'transition': scene_trans,
                     'transition_duration': scene_dur
                 })
-                log(f"   ✅ Scene {idx}: {timing['start']:.2f}s → {timing['end']:.2f}s")
 
             if not scenes_data:
                 raise Exception("No valid scenes to build!")
 
-            log(f"\n   🎬 Building video with {len(scenes_data)} scenes...")
             build_video_with_transitions(
                 scenes_data,
                 str(full_audio_wav),
@@ -920,71 +921,50 @@ def build_video():
                 transition_duration=transition_duration
             )
             scenes_processed = len(scenes_data)
-
         else:
-            # ═══════════════════════════════════════════
-            # ORIGINAL PATH: per-clip + concatenation
-            # ═══════════════════════════════════════════
-            log("\n>>> STEP 4: BUILD CLIPS (no transitions)")
+            log("\n>>> STEP 4: BUILD CLIPS")
             video_clips = []
-
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
-                log(f"\n🎬 SCENE {idx}/{len(scenes)}")
-                log(f"   Time: {timing['start']:.2f}s → {timing['end']:.2f}s ({timing['duration']:.2f}s)")
-
                 if timing['duration'] < 0.5:
-                    log("   ⚠️  Too short, skipping")
                     continue
-
                 image_url = scene.get('image_url')
                 if not image_url:
-                    log("   ⚠️  No image, skipping")
                     continue
 
                 image_path = work_dir / f"scene_{idx}_image.jpg"
+                
+                if idx > 1:
+                    time.sleep(1.5)
+                    
                 download_file(image_url, image_path)
-
                 scene_audio = work_dir / f"scene_{idx}_audio.wav"
                 extract_audio_chunk(full_audio_wav, scene_audio, timing['start'], timing['end'])
-
                 clip_path = work_dir / f"scene_{idx}_clip.mp4"
                 create_video_clip(image_path, scene_audio, clip_path)
-
                 video_clips.append(str(clip_path))
-                log(f"   ✅ Scene {idx} done!")
 
             if not video_clips:
                 raise Exception("No clips created!")
 
-            log(f"\n>>> STEP 5: CONCATENATE {len(video_clips)} CLIPS")
             concatenate_videos(video_clips, str(final_output))
             scenes_processed = len(video_clips)
 
-                        # ── STEP 5: FOREGROUND OVERLAY (SCENE-SPECIFIC) ──
-        # Only run if the module exists AND the global master switch is True
+        # STEP 5: OVERLAYS
         if apply_scene_overlays and str(global_use_overlay).lower() == 'true':
-            log("\n>>> STEP 5: FOREGROUND OVERLAYS (Parsing Scenes...)")
-            
+            update_job_status(job_id, "processing", progress="Applying overlays...")
             scene_overlays = []
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
-                # 'overlay' is now strictly used to define the filename inside a scene
                 scene_overlay_file = scene.get('overlay')
-                
                 if scene_overlay_file and str(scene_overlay_file).lower() != "false":
                     target = OVERLAYS_DIR / scene_overlay_file
                     if target.exists():
-                        # Use scene opacity if provided, otherwise fallback to global opacity
                         scene_opacity = float(scene.get('overlay_opacity', global_overlay_opacity))
-                        
                         scene_overlays.append({
                             'file': target,
                             'start': timing['start'],
                             'end': timing['end'],
                             'opacity': scene_opacity
                         })
-                        log(f"   🪄 Scene {idx}: Applied {scene_overlay_file} ({timing['start']}s → {timing['end']}s)")
-                    else:
-                        log(f"   ⚠️ Scene {idx}: Overlay '{scene_overlay_file}' not found in folder!")
             
             if scene_overlays:
                 with_overlay_mp4 = work_dir / "video_with_overlay.mp4"
@@ -993,43 +973,27 @@ def build_video():
                     if with_overlay_mp4.exists():
                         final_output.unlink()
                         with_overlay_mp4.rename(final_output)
-                        log("   ✅ Specific Overlays applied successfully!")
                 except Exception as e:
-                    log(f"   ❌ Overlay failed, keeping original video. Error: {e}")
-            else:
-                log("   ⏭️ No valid scene overlays requested. Skipped.")
-        else:
-            log("\n>>> STEP 5: OVERLAYS DISABLED GLOBALLY (or module missing) - SKIPPED") 
+                    log(f"   ❌ Overlay failed: {e}")
 
-
-                # ── STEP 5.5: EVIDENCE CARDS ──
+        # STEP 5.5: EVIDENCE CARDS
         if apply_evidence_overlays and create_evidence_image:
-            log("\n>>> STEP 5.5: EVIDENCE CARDS (Checking Scenes...)")
-            
+            update_job_status(job_id, "processing", progress="Adding evidence cards...")
             evidence_timeline = []
             for idx, (scene, timing) in enumerate(zip(scenes, scenes_timing), 1):
                 ev_data = scene.get('evidence_card')
-                
-                # FIX: Extract text and strip out any invisible spaces sent by Make.com
                 title_text = str(ev_data.get('title', '')).strip() if isinstance(ev_data, dict) else ""
                 excerpt_text = str(ev_data.get('excerpt', '')).strip() if isinstance(ev_data, dict) else ""
                 
-                # Only proceed if it's a dict AND actually has text left over
                 if ev_data and isinstance(ev_data, dict) and (title_text or excerpt_text):
-                    # Generate the transparent PNG for this specific scene
                     png_path = work_dir / f"evidence_scene_{idx}.png"
-                    
-                    # Pass the content dictionary if it exists, otherwise pass the root
                     content_dict = ev_data.get('content', ev_data)
-                    
                     create_evidence_image(content_dict, str(png_path))
-                    
                     evidence_timeline.append({
                         'image': png_path,
                         'start': timing['start'],
                         'end': timing['end']
                     })
-                    log(f"   📋 Scene {idx}: Evidence Card generated ({timing['start']}s → {timing['end']}s)")
 
             if evidence_timeline:
                 with_evidence_mp4 = work_dir / "video_with_evidence.mp4"
@@ -1038,15 +1002,13 @@ def build_video():
                     if with_evidence_mp4.exists():
                         final_output.unlink()
                         with_evidence_mp4.rename(final_output)
-                        log("   ✅ Evidence Cards applied successfully!")
                 except Exception as e:
-                    log(f"   ❌ Evidence overlay failed, keeping previous video. Error: {e}")
-            else:
-                log("   ⏭️ No evidence cards requested. Skipped.")
-                
-        # ── STEP 6: SUBTITLES ──
+                    log(f"   ❌ Evidence failed: {e}")
+
+        # STEP 6: SUBTITLES
         if subtitles_enabled and transcribed_words:
-            log(f"\n>>> STEP 6: SUBTITLES ({subtitle_style})")
+            log(f"\n>>> STEP 6: SUBTITLES")
+            update_job_status(job_id, "processing", progress="Burning subtitles...")
             ass_path = work_dir / "subtitles.ass"
             generate_word_subtitles(transcribed_words, str(ass_path), style=subtitle_style)
             final_subs = OUTPUT_DIR / f"{safe_title}_subs.mp4"
@@ -1054,39 +1016,129 @@ def build_video():
             if final_subs.exists() and final_subs.stat().st_size > 1000:
                 final_output.unlink()
                 final_subs.rename(final_output)
-                log("   ✅ Subtitles added!")
-            else:
-                log("   ⚠️  Subtitle issue, keeping original")
-        else:
-            log("\n>>> STEP 6: SUBTITLES SKIPPED")
 
-        # ── CLEANUP ──
+        # CLEANUP
         shutil.rmtree(work_dir)
         file_size_mb = round(final_output.stat().st_size / 1024 / 1024, 2)
 
-        log("\n" + "=" * 60)
         log(f"✅ DONE! {final_output} ({file_size_mb} MB)")
-        log("=" * 60)
 
-        video_id = safe_title 
-        download_url = f"/download/{video_id}"
-
-        return jsonify({
-        "success": True,
-        "version": "3.7-beta",
-        "video_id": video_id,
-        "download_url": download_url,
-        "title": title,
-        "scenes_processed": scenes_processed,
-        "file_size_mb": file_size_mb,
-        "subtitles": subtitles_enabled,
-        "transcript_preview": full_transcript[:200]
-        }), 200
-
+        # Update job as completed
+        video_id = safe_title
+        download_url = f"{base_url}download/{video_id}"
+        
+        update_job_status(
+            job_id,
+            "completed",
+            video_id=video_id,
+            download_url=download_url,
+            file_size_mb=file_size_mb,
+            title=title,
+            scenes_processed=scenes_processed
+        )
+        
+        # Send webhook to Make.com
+        if webhook_url:
+            webhook_payload = {
+                "job_id": job_id,
+                "status": "completed",
+                "video_id": video_id,
+                "download_url": download_url,
+                "title": title,
+                "file_size_mb": file_size_mb,
+                "scenes_processed": scenes_processed,
+                "transcript_preview": full_transcript[:200]
+            }
+            
+            try:
+                response = requests.post(webhook_url, json=webhook_payload, timeout=30)
+                log(f"✅ Webhook sent: {response.status_code}")
+            except Exception as e:
+                log(f"⚠️ Webhook failed: {str(e)}")
+        
     except Exception as e:
-        log(f"\n❌ FAILED: {str(e)}")
-        log(traceback.format_exc())
+        # On error, update status and send error webhook
+        log(f"❌ Job {job_id[:8]}... failed: {str(e)}")
+        update_job_status(job_id, "failed", error=str(e))
+        
+        if webhook_url:
+            try:
+                error_payload = {
+                    "job_id": job_id,
+                    "status": "failed",
+                    "error": str(e),
+                    "traceback": traceback.format_exc()
+                }
+                requests.post(webhook_url, json=error_payload, timeout=10)
+            except:
+                pass
+
+
+@app.route('/build', methods=['POST'])
+def build_video():
+    """
+    Async endpoint - returns immediately with job_id.
+    Video builds in background, webhook sent when done.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"success": False, "error": "No JSON"}), 400
+        
+        # Extract webhook URL
+        webhook_url = data.get('webhook_url')
+        if not webhook_url:
+            return jsonify({
+                "success": False,
+                "error": "webhook_url is required for async processing"
+            }), 400
+        
+        # Validate required fields
+        if not data.get('full_audio_url'):
+            return jsonify({"success": False, "error": "full_audio_url required"}), 400
+        if not data.get('scenes'):
+            return jsonify({"success": False, "error": "No scenes"}), 400
+        
+        # Generate job ID
+        job_id = str(uuid.uuid4())
+        
+        # Get base URL for download links (Ngrok Safe)
+        forwarded_host = request.headers.get('X-Forwarded-Host')
+        forwarded_proto = request.headers.get('X-Forwarded-Proto', 'https')
+        if forwarded_host:
+            base_url = f"{forwarded_proto}://{forwarded_host}/"
+        else:
+            base_url = request.url_root
+        
+        # Initialize job
+        update_job_status(job_id, "queued", webhook_url=webhook_url)
+        
+        log("=" * 60)
+        log(f"🎬 BUILD REQUEST - Job: {job_id}")
+        log(f"📞 Webhook: {webhook_url[:50]}...")
+        log("=" * 60)
+        
+        # Start background thread
+        thread = threading.Thread(
+            target=build_video_async,
+            args=(job_id, data, webhook_url, base_url),
+            daemon=True
+        )
+        thread.start()
+        
+        # Return immediately
+        return jsonify({
+            "success": True,
+            "job_id": job_id,
+            "status": "queued",
+            "message": "Video build started. Webhook will be sent when complete.",
+            "status_url": f"/status/{job_id}"
+        }), 202  # 202 = Accepted
+        
+    except Exception as e:
+        log(f"❌ Request failed: {str(e)}")
         return jsonify({"success": False, "error": str(e)}), 500
+    
 
 @app.route('/download/<video_id>', methods=['GET'])
 def download_video(video_id):
@@ -1105,6 +1157,14 @@ def download_video(video_id):
         as_attachment=True,
         download_name=f"{original_title}.mp4"
     )
+
+@app.route('/status/<job_id>', methods=['GET'])
+def check_status(job_id):
+    """Check build job status"""
+    job = get_job_status(job_id)
+    if job.get('status') == 'unknown':
+        return jsonify({"error": "Job not found"}), 404
+    return jsonify(job), 200
 
 if __name__ == '__main__':
     log("=" * 60)
