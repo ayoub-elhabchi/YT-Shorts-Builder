@@ -3,98 +3,266 @@ import json
 
 url = "http://localhost:5000/build"
 
-data = {
-    "title": "Greek Fire - The Weapon That Burned Wate",
-  "full_audio_url": "https://drive.google.com/file/d/1QfBGW5-Oznrgn7WKEtB7vkcKaKuUCpDD/view?usp=drive_link",
-  "webhook_url": "https://hook.eu1.make.com/nstc6yoms1rrcbagk15e8jynywtf87to",
-  "subtitles": True,           
-  "subtitle_style": "word_by_word", 
-"transition": "fade",
-  "transition_duration": 0.5,
-  "overlay_opacity": 0.2, 
 
-  "scenes": [
+data = {
+    "title": "test 12scenes",
+    "full_audio_url": "https://drive.google.com/file/d/1nnNbu4dKC3_6SSG6FSzHGjEHkxau5e89/view?usp=drive_link",
+    "webhook_url": "https://hk.eu1.make.com/nstc6yoms1rrcbagk15e8jynywtf87to",
+    "subtitles": True,
+    "subtitle_style": "word_by_word",
+    "scenes": [
     {
       "index": 1,
-      "text": "They called it fire that ate the sea. A weapon no enemy could douse. Invisible, unstoppable.",
-      "image_url": "https://drive.google.com/uc?id=1L7MtccgOwmNYgGhbgrwD-1XBMQD8UiBE&export=download",
-       "transition": "fade",
-      "ken_burns_effect": "zoom_in",
-      # "overlay": "documentary.mp4",
+      "transition": "fade",
+      "ken_burns_effect": "zoom_out",
       "evidence_card": {
         "title": "",
         "date": "",
         "excerpt": ""
-      }
-},
+      },
+      "frames": [
+        {
+          "frame": "A",
+          "overlay": False,
+          "voice_text": "Three hundred tons of Nazi gold... vanished in 1945.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, Nazi soldiers in 1945 loading heavy wooden crates stamped with Reichsbank seals onto a camouflaged armored train, close-up on gloved hands passing gold bars, dramatic side lighting through pine trees, golden hour atmosphere, dust particles floating, misty forest background, Wehrmacht uniform details visible, crates marked 'Kunstschutz', barbed wire perimeter, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=16JXIJ8OPB5oKoGKp5zyUgdZ9wEi8XBZo&export=download"
+        },
+        {
+          "frame": "B",
+          "overlay": False,
+          "voice_text": "But the real mystery isn't where it went. It's why nobody's digging.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, sealed tunnel entrance in Polish Owl Mountains, wide shot of concrete-blocked entrance with rusted warning signs in Polish and German, cold blue overcast lighting, dense fog rolling down moss-covered concrete, barbed wire fence, abandoned mine cart, desolate post-war atmosphere, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1n1ZQBieofHFApqfd1qO2Fh8VIbEwMnqs&export=download"
+        }
+      ]
+    },
     {
       "index": 2,
-      "text": "Byzantine Empire. 7th century. Invented under Emperor Leo III. Mixed sulfur, quicklime, oil. Launched from siphon tubes. To protect Constantinople. During the Arab siege of 674.",
-      "image_url": "https://drive.google.com/uc?id=1bDdOuKBrYLvwtbWfNkGcYBUR5MN4hL0O&export=download",
-"transition": "fade_black",
-      "ken_burns_effect": "pan_right",
-      "overlay": "documentary_2.mp4",
-    "evidence_card": {
+      "transition": "slide_left",
+      "ken_burns_effect": "pan_left",
+      "evidence_card": {
         "title": "",
         "date": "",
         "excerpt": ""
-      }
+      },
+      "frames": [
+        {
+          "frame": "A",
+          "overlay": "documentary.mp4",
+          "voice_text": "Wałbrzych, Poland. 1945. As the Red Army closed in, a German armored train loaded with loot disappeared...",
+          "visual_prompt": "Vertical 9:16 aspect ratio, German armored train entering dark mountain tunnel in 1945, POV from behind the locomotive, thick black smoke billowing, SS soldiers running alongside with torches, rain-slicked tracks reflecting torchlight, urgent chaotic mood, rocky tunnel walls, escape sequence, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1gzFZCAl6qIyXORGVULELCtk0S1Jf8-B9&export=download"
+        },
+        {
+          "frame": "B",
+          "overlay": False,
+          "voice_text": "into a mountain tunnel. The entrance was sealed. The crew executed.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, explosion sealing tunnel entrance, close-up of dynamite charges detonating, rocks and debris flying, massive dust cloud, silhouettes of German soldiers in foreground turning away, orange blast lighting, chaotic moment, dust particles, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1_NGl0hG5GlJFpb_OezIsRXMlAPPlNyao&export=download"
+        }
+      ]
     },
     {
       "index": 3,
-      "text": "A captured Arabic chronicler described the blaze. Found in the Byzantine Naval Logbook of 674. The navy feared yet deployed it. Even water turned to flame.",
-      "image_url": "https://drive.google.com/uc?id=1qw1S4-W8TRjcb3jmbKMW59NG7-1Lc6Lh&export=download",
- "transition": "zoom",
+      "transition": "zoom",
       "ken_burns_effect": "zoom_in",
-      "overlay": "dust.mp4",
-            "evidence_card": {
-        "title": "NAVAL LOGBOOK 674",
-        "date": "674 AD",
-        "excerpt": "Entry describes fiery weapon extinguishing enemy ships."
-      }
-
+      "evidence_card": {
+        "title": "Polish Ministry GPR Report",
+        "date": "2015",
+        "excerpt": "Metallic mass detected, 50m length, train-shaped"
+      },
+      "frames": [
+        {
+          "frame": "A",
+          "overlay": "documentary.mp4",
+          "voice_text": "Seventy years later... a deathbed map surfaced. A Polish railwayman's confession.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, elderly Polish railwayman on deathbed in 1950s hospital room, close-up on wrinkled hands holding crumpled hand-drawn map, dim lamplight casting long shadows, family members watching somberly, faded tattoos on forearm, sepia tones, wooden bedside table, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1eEnd69UOck2yZE__fkZgcHB8IDJmN2mK&export=download"
+        },
+        {
+          "frame": "B",
+          "overlay": "documentary_3.mp4",
+          "voice_text": "Ground-penetrating radar confirmed it. Something massive sits inside.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, modern archaeologist pointing at ground-penetrating radar screen showing clear train-shaped outline, overhead shot of equipment in forest clearing, glowing LCD screen, dawn blue hour light, scientific tension, cables and sensors, Polish Ministry vehicle in background, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1ClvoIMtj1E957eX3Nq4VwjOHoR0PpUMS&export=download"
+        }
+      ]
     },
     {
       "index": 4,
-      "text": "The original siphon rests sealed in a Turkish museum. The logbook survives in the Vatican archive. The formula remained a guarded state secret.",
-      "image_url": "https://drive.google.com/uc?id=1EPUrUxqetxYTovl-ePxqJzZ2K_QnPoRi&export=download",
-"transition": "slide_left",
-      "ken_burns_effect": "zoom_out",
-      # "overlay": "documentary_3.mp4",
+      "transition": "fade",
+      "ken_burns_effect": "pan_right",
       "evidence_card": {
         "title": "",
         "date": "",
         "excerpt": ""
-      }
+      },
+      "frames": [
+        {
+          "frame": "A",
+          "overlay": "documentary.mp4",
+          "voice_text": "The Polish Ministry sealed the site. Citing 'structural instability'.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, Polish Ministry officials sealing metal blast door with warning signs, medium shot of officials in dark suits, concrete bunker entrance with official seals, harsh fluorescent tube lighting, bureaucratic cold atmosphere, modern day 2020s, clipboard with classified stamps, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1YnC29d0r2VydvJ18abWLWeCO5a1BlWCp&export=download"
+        },
+        {
+          "frame": "B",
+          "overlay": False,
+          "voice_text": "But miners from the region say that's a lie.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, veteran miner in helmet looking skeptical underground, close-up on weathered face with headlamp lighting from below, dripping water on helmet, wet stone tunnel walls, 2020s modern safety gear, distrustful expression, pickaxe in background, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=19QeNzJJyUeinZJNoHrimBW1Xp_k6oGk9&export=download"
+        }
+      ]
     },
     {
       "index": 5,
-      "text": "Could the secret of Greek fire still be hidden today? The mystery lingers.",
-      "image_url": "https://drive.google.com/uc?id=1F85yMzImPK-bCY7N949zXn6gvhBOQ3FU&export=download",
-"transition": "fade",
-      "ken_burns_effect": "pan_up",
-      "overlay": "documentary_2.mp4",
+      "transition": "slide_right",
+      "ken_burns_effect": "pan_down",
       "evidence_card": {
         "title": "",
         "date": "",
         "excerpt": ""
-      }
+      },
+      "frames": [
+        {
+          "frame": "A",
+          "overlay": False,
+          "voice_text": "The tunnel system connects to Książ Castle. Where Hitler planned a secret headquarters.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, Książ Castle exterior perched on cliff edge, wide aerial shot, Gothic architecture with Nazi modifications, misty morning atmosphere, forest valley below, mysterious mood, Third Reich secrets, baroque gardens, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1RgFJyl_QZnrjrDlEF7Nz3n4UktjtPxig&export=download"
+        },
+        {
+          "frame": "B",
+          "overlay": False,
+          "voice_text": "The gold was never meant to be found. Because it wasn't just gold.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, dark underground tunnel connecting to castle basement, POV shot descending steep wet stairs, stone walls with Nazi eagle symbol carved, flickering bare bulb overhead, oppressive atmosphere, water dripping, hidden passageway, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1aI2ClFGBMaZ9ApB2-NHdz2-FB3jSDLOx&export=download"
+        }
+      ]
     },
     {
       "index": 6,
-      "text": "Not everyone sticks around till the end. But you did.",
-      "image_url": "https://drive.google.com/uc?id=1Jqm_XD1UQnQ2yHDcTEl0F5OSSnAcfga_&export=download",
-"transition": "fade_black",
-      "ken_burns_effect": "",
-      "overlay": "documentary_4.mp4",
-     "evidence_card": {
+      "transition": "none",
+      "ken_burns_effect": "zoom_in",
+      "evidence_card": {
         "title": "",
         "date": "",
         "excerpt": ""
-      }
+      },
+      "frames": [
+        {
+          "frame": "A",
+          "overlay": False,
+          "voice_text": "So who's really protecting what's inside? And what happens if you dig?",
+          "visual_prompt": "Vertical 9:16 aspect ratio, young researcher looking at laptop screen with coordinates and old map overlay, close-up on face illuminated by screen glow, modern apartment at night, intense focused expression, multiple browser tabs, conspiracy theory websites, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1jT5L8VMkRHeXCfCLPvN3jUqRyuQPdGnV&export=download"
+        },
+        {
+          "frame": "B",
+          "overlay": False,
+          "voice_text": "The maps and coordinates are public. Find them before they disappear.",
+          "visual_prompt": "Vertical 9:16 aspect ratio, laptop screen showing map coordinates being deleted or censored, macro shot of glitch effect spreading across pixels, screen reflection in glasses, urgency and conspiracy, redacted government warning, disappearing data, 8K photorealistic cinematic lighting ultra-high contrast hyperdetailed no text no watermarks no logos",
+          "image_url": "https://drive.google.com/uc?id=1P5lvv-uz52ZFTq71yvv9wc0yLC2B6jFm&export=download"
+        }
+      ]
     }
-    ]
+  ]
 }
+
+
+# data = {
+#     "title": "test",
+#   "full_audio_url": "https://drive.google.com/file/d/1QfBGW5-Oznrgn7WKEtB7vkcKaKuUCpDD/view?usp=drive_link",
+#   "webhook_url": "https://hk.eu1.make.com/nstc6yoms1rrcbagk15e8jynywtf87to",
+#   "subtitles": True,
+#   "subtitle_style": "word_by_word",
+#   "transition": "fade",
+#   # "transition_duration": 0.5,
+#   # "overlay_opacity": 0.2,
+
+#   "scenes": [
+#     {
+#       "index": 1,
+#       "text": "They called it fire that ate the sea. A weapon no enemy could douse. Invisible, unstoppable.",
+#       "image_url": "https://drive.google.com/uc?id=1L7MtccgOwmNYgGhbgrwD-1XBMQD8UiBE&export=download",
+#        "transition": "fade",
+#       "ken_burns_effect": "zoom_in",
+#       "overlay": "documentary.mp4",
+#       "evidence_card": {
+#         "title": "",
+#         "date": "",
+#         "excerpt": ""
+#       }
+# },
+#     {
+#       "index": 2,
+#       "text": "Byzantine Empire. 7th century. Invented under Emperor Leo III. Mixed sulfur, quicklime, oil. Launched from siphon tubes. To protect Constantinople. During the Arab siege of 674.",
+#       "image_url": "https://drive.google.com/uc?id=1bDdOuKBrYLvwtbWfNkGcYBUR5MN4hL0O&export=download",
+# "transition": "fade_black",
+#       "ken_burns_effect": "pan_right",
+#       "overlay": "documentary_2.mp4",
+#     "evidence_card": {
+#         "title": "",
+#         "date": "",
+#         "excerpt": ""
+#       }
+#     },
+#     {
+#       "index": 3,
+#       "text": "A captured Arabic chronicler described the blaze. Found in the Byzantine Naval Logbook of 674. The navy feared yet deployed it. Even water turned to flame.",
+#       "image_url": "https://drive.google.com/uc?id=1qw1S4-W8TRjcb3jmbKMW59NG7-1Lc6Lh&export=download",
+#  "transition": "zoom",
+#       "ken_burns_effect": "zoom_in",
+#       "overlay": "dust.mp4",
+#             "evidence_card": {
+#         "title": "NAVAL LOGBOOK 674",
+#         "date": "674 AD",
+#         "excerpt": "Entry describes fiery weapon extinguishing enemy ships."
+#       }
+
+#     },
+#     {
+#       "index": 4,
+#       "text": "The original siphon rests sealed in a Turkish museum. The logbook survives in the Vatican archive. The formula remained a guarded state secret.",
+#       "image_url": "https://drive.google.com/uc?id=1EPUrUxqetxYTovl-ePxqJzZ2K_QnPoRi&export=download",
+# "transition": "slide_left",
+#       "ken_burns_effect": "zoom_out",
+#       # "overlay": "documentary_3.mp4",
+#       "evidence_card": {
+#         "title": "",
+#         "date": "",
+#         "excerpt": ""
+#       }
+#     },
+#     {
+#       "index": 5,
+#       "text": "Could the secret of Greek fire still be hidden today? The mystery lingers.",
+#       "image_url": "https://drive.google.com/uc?id=1F85yMzImPK-bCY7N949zXn6gvhBOQ3FU&export=download",
+# "transition": "fade",
+#       "ken_burns_effect": "pan_up",
+#       "overlay": "documentary_2.mp4",
+#       "evidence_card": {
+#         "title": "",
+#         "date": "",
+#         "excerpt": ""
+#       }
+#     },
+#     {
+#       "index": 6,
+#       "text": "Not everyone sticks around till the end. But you did.",
+#       "image_url": "https://drive.google.com/uc?id=1Jqm_XD1UQnQ2yHDcTEl0F5OSSnAcfga_&export=download",
+# "transition": "fade_black",
+#       "ken_burns_effect": "",
+#       # "overlay": "documentary_4.mp4",
+#      "evidence_card": {
+#         "title": "",
+#         "date": "",
+#         "excerpt": ""
+#       }
+#     }
+#     ]
+# }
 
 # data = {
 #     "title": "He Defected to America. Then Vanished Back Into Cuba.",

@@ -17,6 +17,6 @@
         "default_transition_duration": 0.5,
         "ken_burns_movement": true,
         "use_overlay": true,
-        "overlay_opacity": 0.1
+        "overlay_opacity": 0.5
     }
 }
