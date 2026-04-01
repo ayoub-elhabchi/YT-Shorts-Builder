@@ -1311,7 +1311,7 @@ def build_video_async(job_id, data, webhook_url, base_url):
         log(f"   📊 {len(scenes)} scenes → {len(frame_entries)} frames")
 
         # STEP 4: BUILD VIDEO
-        final_output = OUTPUT_DIR / f"{clean_title}.mp4"
+        final_output = OUTPUT_DIR / f"{safe_title}.mp4"
         update_job_status(job_id, "processing", progress="Building video...")
 
         if transition_effect != "none" or use_ken_burns:
@@ -1641,20 +1641,18 @@ def build_video():
 
 @app.route("/download/<video_id>", methods=["GET"])
 def download_video(video_id):
-    # Convert URL-safe back to original (underscores → spaces)
-    original_title = video_id.replace("___", " - ").replace("_", " ")
-    file_path = OUTPUT_DIR / f"{original_title}.mp4"
+    file_path = OUTPUT_DIR / f"{video_id}.mp4"
 
     if not file_path.exists():
         return jsonify({"error": "Video not found or already deleted"}), 404
 
-    log(f" 📤 Streaming video to Make.com: {original_title}.mp4")
+    log(f" 📤 Streaming video to Make.com: {file_path.name}")
 
     return send_file(
         file_path,
         mimetype="video/mp4",
         as_attachment=True,
-        download_name=f"{original_title}.mp4",
+        download_name=file_path.name,
     )
 
 
