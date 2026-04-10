@@ -9,6 +9,7 @@ from datetime import datetime
 
 try:
     from effects import apply_ken_burns
+    from effects_shake import apply_shake_zoom_effect
 except ImportError:
     pass
 
@@ -311,10 +312,18 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                     if scenes_data[bi].get('kb_effect'):
                         p_out = (t - scenes_data[bi]['start']) / max(0.1, scenes_data[bi]['end'] - scenes_data[bi]['start'])
                         img_out = apply_ken_burns(scenes_data[bi]['raw_image'], max(0.0, min(1.0, p_out)), scenes_data[bi]['kb_effect'], width, height)
+                    elif scenes_data[bi].get('shake_effect'):
+                        p_out = (t - scenes_data[bi]['start']) / max(0.1, scenes_data[bi]['end'] - scenes_data[bi]['start'])
+                        shk = scenes_data[bi]['shake_effect']
+                        img_out = apply_shake_zoom_effect(scenes_data[bi]['raw_image'], max(0.0, min(1.0, p_out)), shk.get("shake_intensity", 0.5), shk.get("zoom_out_factor", 1.1), width, height)
 
                     if scenes_data[bi + 1].get('kb_effect'):
                         p_in = (t - scenes_data[bi + 1]['start']) / max(0.1, scenes_data[bi + 1]['end'] - scenes_data[bi + 1]['start'])
                         img_in = apply_ken_burns(scenes_data[bi + 1]['raw_image'], max(0.0, min(1.0, p_in)), scenes_data[bi + 1]['kb_effect'], width, height)
+                    elif scenes_data[bi + 1].get('shake_effect'):
+                        p_in = (t - scenes_data[bi + 1]['start']) / max(0.1, scenes_data[bi + 1]['end'] - scenes_data[bi + 1]['start'])
+                        shk = scenes_data[bi + 1]['shake_effect']
+                        img_in = apply_shake_zoom_effect(scenes_data[bi + 1]['raw_image'], max(0.0, min(1.0, p_in)), shk.get("shake_intensity", 0.5), shk.get("zoom_out_factor", 1.1), width, height)
                     
                     # Blend the two moving images together
                     frame = make_transition_frame(img_out, img_in, effect, trans_progress, width, height)
@@ -334,6 +343,10 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                     if scenes_data[0].get('kb_effect'):
                         s_prog = (t - scenes_data[0]['start']) / max(0.1, scenes_data[0]['end'] - scenes_data[0]['start'])
                         img_target = apply_ken_burns(scenes_data[0]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[0]['kb_effect'], width, height)
+                    elif scenes_data[0].get('shake_effect'):
+                        s_prog = (t - scenes_data[0]['start']) / max(0.1, scenes_data[0]['end'] - scenes_data[0]['start'])
+                        shk = scenes_data[0]['shake_effect']
+                        img_target = apply_shake_zoom_effect(scenes_data[0]['raw_image'], max(0.0, min(1.0, s_prog)), shk.get("shake_intensity", 0.5), shk.get("zoom_out_factor", 1.1), width, height)
                     
                     frame = make_transition_frame(black, img_target, 'fade', progress, width, height)
                     process.stdin.write(frame.tobytes())
@@ -350,6 +363,10 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                     if scenes_data[-1].get('kb_effect'):
                         s_prog = (t - scenes_data[-1]['start']) / max(0.1, scenes_data[-1]['end'] - scenes_data[-1]['start'])
                         img_source = apply_ken_burns(scenes_data[-1]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[-1]['kb_effect'], width, height)
+                    elif scenes_data[-1].get('shake_effect'):
+                        s_prog = (t - scenes_data[-1]['start']) / max(0.1, scenes_data[-1]['end'] - scenes_data[-1]['start'])
+                        shk = scenes_data[-1]['shake_effect']
+                        img_source = apply_shake_zoom_effect(scenes_data[-1]['raw_image'], max(0.0, min(1.0, s_prog)), shk.get("shake_intensity", 0.5), shk.get("zoom_out_factor", 1.1), width, height)
                         
                     frame = make_transition_frame(img_source, black, 'fade', progress, width, height)
                     process.stdin.write(frame.tobytes())
@@ -360,6 +377,12 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                         # --- GENERATE KEN BURNS FRAME ON THE FLY ---
                         s_prog = (t - scenes_data[si]['start']) / max(0.1, scenes_data[si]['end'] - scenes_data[si]['start'])
                         frame = apply_ken_burns(scenes_data[si]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[si]['kb_effect'], width, height)
+                        process.stdin.write(frame.tobytes())
+                    elif scenes_data[si].get('shake_effect'):
+                        # --- GENERATE SHAKE FRAME ON THE FLY ---
+                        s_prog = (t - scenes_data[si]['start']) / max(0.1, scenes_data[si]['end'] - scenes_data[si]['start'])
+                        shk = scenes_data[si]['shake_effect']
+                        frame = apply_shake_zoom_effect(scenes_data[si]['raw_image'], max(0.0, min(1.0, s_prog)), shk.get("shake_intensity", 0.5), shk.get("zoom_out_factor", 1.1), width, height)
                         process.stdin.write(frame.tobytes())
                     else:
                         # Fallback to static fast cache

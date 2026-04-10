@@ -21,6 +21,7 @@ import re
 import threading
 import uuid
 import time
+from PIL import Image
 
 # Transitions module
 try:
@@ -97,6 +98,27 @@ def load_config():
     except Exception as e:
         log(f"⚠️ Error reading config.json, using defaults: {e}")
         return DEFAULT_CONFIG
+
+
+def generate_shake_filter(grade: float = 1.0) -> str:
+    """
+    Generates an FFmpeg shake filter string.
+    Applies a micro shake synced to a word or beat drop.
+    Uses dynamic crop coordinates and scaling to oscillate the frame.
+    """
+    # Base configuration for the shake
+    factor = 0.05 * grade
+    zoom = 1.0 - factor
+    
+    # Speed of the oscillation 
+    shake_speed_x = 35 * grade
+    shake_speed_y = 25 * grade
+    
+    # Oscillate the crop window dynamically, then scale back to full 1080x1920
+    crop = f"crop=iw*{zoom:.2f}:ih*{zoom:.2f}:(iw-ow)/2+(iw-ow)/2*sin(t*{shake_speed_x:.2f}):(ih-oh)/2+(ih-oh)/2*cos(t*{shake_speed_y:.2f})"
+    scale = "scale=1080:1920"
+    
+    return f"{crop},{scale}"
 
 
 # Load it globally when the script starts
@@ -854,15 +876,11 @@ def create_video_clip(image_path, audio_path, output_path):
         "stillimage",
         "-c:a",
         "aac",
-        "-b:a",
-        "128k",
-        "-pix_fmt",
-        "yuv420p",
-        "-vf",
-        "scale=1080:1920:force_original_aspect_ratio=decrease,"
-        "pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
-        "-t",
-        str(duration),
+        "-b:a", "128k",
+        "-pix_fmt", "yuv420p",
+        "-video_track_timescale", "90000",
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+        "-t", str(duration),
         "-shortest",
         "-y",
         str(output_path),
@@ -878,16 +896,12 @@ def concatenate_videos(video_paths, output_path):
             f.write(f"file '{os.path.abspath(vp)}'\n")
     cmd = [
         "ffmpeg",
-        "-f",
-        "concat",
-        "-safe",
-        "0",
-        "-i",
-        str(concat_file),
-        "-c",
-        "copy",
-        "-y",
-        str(output_path),
+        "-fflags", "+genpts",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", str(concat_file),
+        "-c", "copy",
+        "-y", str(output_path),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
 
@@ -1665,10 +1679,538 @@ def check_status(job_id):
     return jsonify(job), 200
 
 
+
+# ============================================================
+# RETRO / N8N LOGIC (MERGED FROM SIMPLE_ROUTES_FIXED)
+# ============================================================
+RETRO_CONFIG_PATH = Path("./retro_config.json")
+RETRO_BGM_DIR = Path("./assets/retro_bgm")
+
+try:
+    from effects_shake import apply_shake_zoom_effect
+except ImportError:
+    apply_shake_zoom_effect = None
+
+def load_default_retro_config():
+    return {
+        "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2},
+        "subtitles": {
+            "font_name": "Impact",
+            "font_size_word": 90,
+            "font_size_highlight": 72,
+            "font_color_primary": "&H0000FFFF",
+            "font_color_white": "&H00FFFFFF",
+            "margin_v": 350,
+            "alignment": 2
+        },
+        "video": {
+            "default_transition": "none",
+            "default_transition_duration": 0.5,
+            "ken_burns_movement": False,
+            "use_overlay": False,
+            "overlay_opacity": 0.15,
+            "effects": {
+                "shake_zoom": {
+                    "enabled": True,
+                    "shake_intensity": 0.5,
+                    "zoom_out_factor": 1.1,
+                    "duration": 0.3
+                }
+            }
+        }
+    }
+
+def load_retro_config():
+    if not RETRO_CONFIG_PATH.exists():
+        default_config = load_default_retro_config()
+        with open(RETRO_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(default_config, f, indent=4)
+        return default_config
+    try:
+        with open(RETRO_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        log(f"⚠️ Error reading retro_config.json, using defaults: {e}")
+        return load_default_retro_config()
+
+# Load config
+RETRO_CONFIG = load_retro_config()
+
+# Directory paths
+TEMP_DIR = Path("./temp/shorts_builder")
+OUTPUT_DIR = Path("./output/shorts_output")
+RETRO_BGM_DIR = Path("./assets/retro_bgm")
+TEMP_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+RETRO_BGM_DIR.mkdir(parents=True, exist_ok=True)
+
+# Words too common to match on
+SKIP_WORDS = frozenset(
+    {
+        "a", "an", "the", "in", "on", "of", "to", "and", "is", "it", "its", "was",
+        "were", "are", "be", "been", "has", "had", "have", "for", "with", "at",
+        "by", "from", "that", "this", "but", "not", "or", "as", "if", "she",
+        "he", "they", "her", "his", "you", "i", "so", "do", "did", "does",
+        "will", "would", "could", "should", "can", "may", "my", "your", "we",
+        "our", "their", "me", "him", "us", "them", "who", "what", "how",
+        "when", "where", "why", "which", "no", "yes", "all", "any", "some",
+        "one", "two", "up", "out", "about", "into", "over", "each", "still",
+    }
+)
+
+# Job tracking
+JOBS = {}
+
+def load_retro_config():
+    if not RETRO_CONFIG_PATH.exists():
+        # Create default config if it doesn't exist
+        default_config = {
+            "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2},
+            "subtitles": {
+                "font_name": "Impact",
+                "font_size_word": 90,
+                "font_size_highlight": 72,
+                "font_color_primary": "&H0000FFFF",
+                "font_color_white": "&H00FFFFFF",
+                "margin_v": 350,
+                "alignment": 2
+            },
+            "video": {
+                "default_transition": "none",
+                "default_transition_duration": 0.5,
+                "ken_burns_movement": False,
+                "use_overlay": False,
+                "overlay_opacity": 0.15,
+                "effects": {
+                    "shake_zoom": {
+                        "enabled": True,
+                        "shake_intensity": 0.5,
+                        "zoom_out_factor": 1.1,
+                        "duration": 0.3
+                    }
+                }
+            }
+        }
+        with open(RETRO_CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(default_config, f, indent=4)
+        return default_config
+    try:
+        with open(RETRO_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"⚠️ Error reading retro_config.json, using defaults: {e}")
+        return load_default_retro_config()
+
+RETRO_CONFIG = load_retro_config()
+RETRO_BGM_DIR.mkdir(parents=True, exist_ok=True)
+
+def get_scene_text_n8n(scene):
+    """Combine all frame voice_text for scene-level alignment."""
+    frames = scene.get("frames", [])
+    if frames:
+        return " ".join(f.get("voice_text", "") for f in frames).strip()
+    return ""
+
+def expand_scenes_to_frames_n8n(scenes, scenes_timing, transcribed_words):
+    """
+    Expands scenes with 1-5 frames into individual frame entries with timing.
+    Returns a flat list of frame dicts ready for video building.
+    """
+    frame_entries = []
+
+    for scene, timing in zip(scenes, scenes_timing):
+        frames = scene.get("frames", [])
+        scene_index = scene.get("index", 0)
+        transition = scene.get("transition", "none")
+
+        if not frames:
+            continue
+
+        num_frames = len(frames)
+        frame_timings = []
+        current_start = timing["start"]
+
+        for i, frame in enumerate(frames):
+            frame_text = frame.get("voice_text", "")
+            
+            if i == num_frames - 1:
+                frame_end = timing["end"]
+            else:
+                next_frame = frames[i + 1]
+                next_frame_text = next_frame.get("voice_text", "")
+                frame_end = find_frame_b_start(
+                    transcribed_words,
+                    next_frame_text,
+                    current_start,
+                    timing["end"]
+                )
+            
+            if frame_end - current_start < 0.5:
+                frame_end = current_start + 0.5
+
+            frame_timings.append({
+                "start": current_start,
+                "end": frame_end,
+                "duration": round(frame_end - current_start, 2)
+            })
+            
+            current_start = frame_end
+
+        for i, (frame, frame_timing) in enumerate(zip(frames, frame_timings)):
+            frame_label = chr(65 + i)
+            frame_entries.append({
+                "image_url": frame.get("image_url", ""),
+                "voice_text": frame.get("voice_text", ""),
+                "visual_prompt": frame.get("visual_prompt", ""),
+                "start": frame_timing["start"],
+                "end": frame_timing["end"],
+                "duration": frame_timing["duration"],
+                "scene_index": scene_index,
+                "frame_label": frame_label,
+                "transition": transition if i == 0 else "none",
+                "ken_burns_effect": scene.get("ken_burns_effect"),
+            })
+
+    return frame_entries
+
+def build_video_n8n_async(job_id, data, webhook_url, base_url):
+    """
+    Background thread function for n8n workflow - builds video with flexible frame counts.
+    Uses music and transitions, NO overlays.
+    """
+    try:
+        update_job_status(job_id, "processing", progress="Starting n8n build...")
+
+        title = data.get("title", f'n8n_video_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
+        full_audio_url = data.get("full_audio_url")
+        scenes = data.get("scenes", [])
+        subtitles_enabled = data.get("subtitles", False)
+        subtitle_style = data.get("subtitle_style", "word_by_word")
+        transition_effect = data.get("transition", "none")
+        transition_duration = float(data.get("transition_duration", 0.5))
+        add_bgm = data.get("add_bgm", RETRO_CONFIG["audio"]["add_bgm_by_default"])
+        bgm_volume = float(data.get("bgm_volume", RETRO_CONFIG["audio"]["default_bgm_volume"]))
+        use_ken_burns = RETRO_CONFIG["video"].get("ken_burns_movement", False)
+
+        if transition_effect not in VALID_TRANSITIONS:
+            transition_effect = "none"
+        if transition_effect != "none" and not PILLOW_AVAILABLE:
+            transition_effect = "none"
+        transition_duration = max(0.2, min(2.0, transition_duration))
+
+        log(f"📝 [N8N] Title: {title}")
+        log(f"📊 [N8N] Scenes: {len(scenes)}")
+        log(f"🔄 [N8N] Transition: {transition_effect} ({transition_duration}s)")
+
+        clean_title = "".join(
+            c for c in title if c.isalnum() or c in (" ", "-", "_", ".")
+        ).strip()[:50]
+        safe_title = clean_title.replace(" ", "_").replace("-", "_")
+
+        work_dir = TEMP_DIR / f"n8n_build_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        work_dir.mkdir(exist_ok=True)
+
+        log("\n>>> [N8N] STEP 1: DOWNLOAD AUDIO")
+        update_job_status(job_id, "processing", progress="Downloading audio...")
+        raw_audio = work_dir / "full_audio_raw"
+        download_file(full_audio_url, raw_audio)
+        full_audio_wav = work_dir / "full_audio.wav"
+        ensure_wav(raw_audio, full_audio_wav)
+        total_duration = get_audio_duration(full_audio_wav)
+
+        log("\n>>> [N8N] STEP 2: TRANSCRIBE")
+        update_job_status(job_id, "processing", progress="Transcribing audio...")
+        transcribed_words, full_transcript = transcribe_audio_with_whisper(full_audio_wav)
+        log(f"\n📄 [N8N] TRANSCRIPT:\n   {full_transcript}")
+        log(f"   ({len(transcribed_words)} words)")
+
+        if add_bgm:
+            valid_bgm_exts = (".mp3", ".wav", ".m4a", ".ogg")
+            bgm_files = [
+                f
+                for f in RETRO_BGM_DIR.iterdir()
+                if f.is_file() and f.suffix.lower() in valid_bgm_exts
+            ]
+
+            if bgm_files:
+                log("\n>>> [N8N] STEP 2.5: ADD BACKGROUND MUSIC")
+                update_job_status(job_id, "processing", progress="Mixing background music...")
+                chosen_bgm = random.choice(bgm_files)
+                mixed_audio_wav = work_dir / "full_audio_mixed.wav"
+                mix_background_music(full_audio_wav, chosen_bgm, mixed_audio_wav, volume=bgm_volume)
+                full_audio_wav = mixed_audio_wav
+
+        log("\n>>> [N8N] STEP 3: ALIGN SCENES")
+        update_job_status(job_id, "processing", progress="Aligning scenes to audio...")
+        scene_texts = [get_scene_text_n8n(s) for s in scenes]
+        scenes_timing = align_scenes_to_timestamps(transcribed_words, scene_texts)
+
+        log("\n>>> [N8N] STEP 3.5: EXPAND SCENES TO FRAMES")
+        frame_entries = expand_scenes_to_frames_n8n(scenes, scenes_timing, transcribed_words)
+        log(f"   📊 {len(scenes)} scenes → {len(frame_entries)} frames")
+
+        final_output = OUTPUT_DIR / f"{safe_title}.mp4"
+        update_job_status(job_id, "processing", progress="Building video...")
+
+        shake_cfg = RETRO_CONFIG["video"].get("effects", {}).get("shake_zoom", {})
+        shake_zoom_enabled = shake_cfg.get("enabled", False)
+
+        if transition_effect != "none" or use_ken_burns or shake_zoom_enabled:
+            log(f"\n>>> [N8N] STEP 4: BUILD ADVANCED PATH")
+            
+            scenes_data = []
+            for idx, frame in enumerate(frame_entries, 1):
+                if frame["duration"] < 0.3:
+                    continue
+                image_url = frame.get("image_url")
+                if not image_url:
+                    continue
+
+                scene_trans = frame.get("transition", transition_effect)
+                if scene_trans not in VALID_TRANSITIONS:
+                    scene_trans = transition_effect
+                scene_dur = float(frame.get("transition_duration", transition_duration))
+                scene_dur = max(0.2, min(2.0, scene_dur))
+
+                log(f"   📥 Scene {frame['scene_index']}{frame['frame_label']}: downloading image...")
+                image_path = (
+                    work_dir
+                    / f"scene_{frame['scene_index']}{frame['frame_label']}_image.jpg"
+                )
+
+                if idx > 1:
+                    time.sleep(1.5)
+
+                download_file(image_url, image_path)
+                pil_img = prepare_image_for_shorts(image_path)
+
+                raw_img = Image.open(image_path).convert("RGB")
+                
+                requested_fx = frame.get("ken_burns_effect")
+                if requested_fx in KEN_BURNS_EFFECTS:
+                    kb_fx = requested_fx
+                else:
+                    kb_fx = (
+                        get_random_ken_burns_effect()
+                        if (use_ken_burns and get_random_ken_burns_effect)
+                        else None
+                    )
+
+                scenes_data.append({
+                    "image": pil_img,
+                    "raw_image": raw_img,
+                    "kb_effect": kb_fx,
+                    "start": frame["start"],
+                    "end": frame["end"],
+                    "scene_index": frame["scene_index"],
+                    "frame_label": frame["frame_label"],
+                    "transition": scene_trans,
+                    "transition_duration": scene_dur,
+                    "shake_effect": shake_cfg if shake_zoom_enabled else None,
+                })
+
+            if not scenes_data:
+                raise Exception("No valid scenes to build!")
+
+            build_video_with_transitions(
+                scenes_data,
+                str(full_audio_wav),
+                str(final_output),
+                transition_effect=transition_effect,
+                transition_duration=transition_duration,
+            )
+            scenes_processed = len(scenes_data)
+        else:
+            log("\n>>> [N8N] STEP 4: BUILD CLIPS")
+            video_clips = []
+            for idx, frame in enumerate(frame_entries, 1):
+                if frame["duration"] < 0.5:
+                    continue
+                image_url = frame.get("image_url")
+                if not image_url:
+                    continue
+
+                image_path = work_dir / f"frame_{idx}_image.jpg"
+
+                if idx > 1:
+                    time.sleep(1.5)
+
+                download_file(image_url, image_path)
+                frame_audio = work_dir / f"frame_{idx}_audio.wav"
+                
+                cmd = [
+                    "ffmpeg",
+                    "-i", str(full_audio_wav),
+                    "-ss", str(frame["start"]),
+                    "-to", str(frame["end"]),
+                    "-acodec", "copy",
+                    "-y", str(frame_audio)
+                ]
+                subprocess.run(cmd, capture_output=True, check=True)
+                
+                clip_path = work_dir / f"frame_{idx}_clip.mp4"
+                
+                cmd = [
+                    "ffmpeg",
+                    "-loop", "1",
+                    "-i", str(image_path),
+                    "-i", str(frame_audio),
+                    "-c:v", "libx264",
+                    "-preset", "medium",
+                    "-tune", "stillimage",
+                    "-c:a", "aac",
+                    "-b:a", "128k",
+                    "-pix_fmt", "yuv420p",
+                    "-video_track_timescale", "90000",
+                    "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2:black",
+                    "-t", str(frame["duration"]),
+                    "-shortest",
+                    "-y", str(clip_path)
+                ]
+                subprocess.run(cmd, check=True, capture_output=True)
+                video_clips.append(str(clip_path))
+
+            if not video_clips:
+                raise Exception("No clips created!")
+
+            concat_file = work_dir / "concat_list.txt"
+            with open(concat_file, "w") as f:
+                for vp in video_clips:
+                    f.write(f"file '{os.path.abspath(vp)}'\n")
+            
+            cmd = [
+                "ffmpeg",
+                "-fflags", "+genpts",
+                "-f", "concat",
+                "-safe", "0",
+                "-i", str(concat_file),
+                "-c", "copy",
+                "-y", str(final_output)
+            ]
+            subprocess.run(cmd, check=True)
+            scenes_processed = len(video_clips)
+
+        shutil.rmtree(work_dir)
+        file_size_mb = round(final_output.stat().st_size / 1024 / 1024, 2)
+
+        log(f"✅ [N8N] DONE! {final_output} ({file_size_mb} MB)")
+
+        video_id = safe_title
+        download_url = f"{base_url}/download/{video_id}"
+
+        update_job_status(
+            job_id,
+            "completed",
+            video_id=video_id,
+            download_url=download_url,
+            file_size_mb=file_size_mb,
+            title=title,
+            scenes_processed=scenes_processed,
+        )
+
+        if webhook_url:
+            webhook_payload = {
+                "job_id": job_id,
+                "status": "completed",
+                "video_id": video_id,
+                "download_url": download_url,
+                "title": title,
+                "file_size_mb": file_size_mb,
+                "scenes_processed": scenes_processed,
+                "transcript_preview": full_transcript[:200],
+            }
+
+            try:
+                response = requests.post(webhook_url, json=webhook_payload, timeout=30)
+                log(f"✅ Webhook sent: {response.status_code}")
+            except Exception as e:
+                log(f"⚠️ Webhook failed: {str(e)}")
+
+    except Exception as e:
+        log(f"❌ [N8N] ERROR: {str(e)}")
+        traceback.print_exc()
+        update_job_status(job_id, "failed", error=str(e))
+        
+        if webhook_url:
+            webhook_payload = {
+                "job_id": job_id,
+                "status": "failed",
+                "error": str(e),
+            }
+            try:
+                requests.post(webhook_url, json=webhook_payload, timeout=30)
+            except Exception:
+                pass
+
+@app.route("/retro/build", methods=["POST"])
+def n8n_build():
+    """
+    N8N AI Workflow endpoint.
+    Accepts scenes with 1-5 frames per scene.
+    Uses music and transitions, NO overlays.
+    """
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+
+        if "full_audio_url" not in data:
+            return jsonify({"error": "full_audio_url is required"}), 400
+        
+        if "scenes" not in data or not data["scenes"]:
+            return jsonify({"error": "scenes is required and must be non-empty"}), 400
+
+        for scene in data["scenes"]:
+            if "frames" not in scene or not scene["frames"]:
+                return jsonify({"error": "Each scene must have a non-empty frames array"}), 400
+            
+            num_frames = len(scene["frames"])
+            if num_frames < 1 or num_frames > 5:
+                return jsonify({
+                    "error": f"Each scene must have 1-5 frames, found {num_frames}"
+                }), 400
+
+        job_id = str(uuid.uuid4())
+        
+        webhook_url = data.get("webhook_url")
+        base_url = data.get("base_url", request.host_url.rstrip("/"))
+
+        update_job_status(job_id, "queued", input_data=data)
+
+        thread = threading.Thread(
+            target=build_video_n8n_async,
+            args=(job_id, data, webhook_url, base_url)
+        )
+        thread.daemon = True
+        thread.start()
+
+        return jsonify({
+            "job_id": job_id,
+            "status": "queued",
+            "message": "Video build started"
+        }), 202
+
+    except Exception as e:
+        log(f"❌ N8N build error: {str(e)}")
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/retro/status/<job_id>", methods=["GET"])
+def n8n_status(job_id):
+    """Get status of an n8n build job."""
+    job = get_job_status(job_id)
+
+    if job.get("status") == "unknown":
+        return jsonify({"error": "Job not found"}), 404
+
+    return jsonify(job)
+
+
 if __name__ == "__main__":
     log("=" * 60)
     log("🚀 YouTube Shorts Builder v3.7 beta")
-    log("   Precise Alignment + Transitions + Subtitles")
+    log(" Precise Alignment + Transitions + Subtitles")
     log("=" * 60)
     if shutil.which("ffmpeg"):
         log("✅ FFmpeg")
@@ -1683,6 +2225,6 @@ if __name__ == "__main__":
     if PILLOW_AVAILABLE:
         log(f"✅ Pillow (transitions: {', '.join(VALID_TRANSITIONS)})")
     else:
-        log("⚠️  Pillow NOT found — transitions disabled, hard cuts only")
+        log("⚠️ Pillow NOT found — transitions disabled, hard cuts only")
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
