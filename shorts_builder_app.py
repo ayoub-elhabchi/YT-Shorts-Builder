@@ -1658,6 +1658,9 @@ def download_video(video_id):
     file_path = OUTPUT_DIR / f"{video_id}.mp4"
 
     if not file_path.exists():
+        file_path = Path("./output/retro_output") / f"{video_id}.mp4"
+
+    if not file_path.exists():
         return jsonify({"error": "Video not found or already deleted"}), 404
 
     log(f" 📤 Streaming video to Make.com: {file_path.name}")
@@ -1685,6 +1688,7 @@ def check_status(job_id):
 # ============================================================
 RETRO_CONFIG_PATH = Path("./retro_config.json")
 RETRO_BGM_DIR = Path("./assets/retro_bgm")
+RETRO_OUTPUT_DIR = Path("./output/retro_output")
 
 try:
     from effects_shake import apply_shake_zoom_effect
@@ -1803,6 +1807,7 @@ def load_retro_config():
 
 RETRO_CONFIG = load_retro_config()
 RETRO_BGM_DIR.mkdir(parents=True, exist_ok=True)
+RETRO_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 def get_scene_text_n8n(scene):
     """Combine all frame voice_text for scene-level alignment."""
@@ -1949,7 +1954,7 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
         frame_entries = expand_scenes_to_frames_n8n(scenes, scenes_timing, transcribed_words)
         log(f"   📊 {len(scenes)} scenes → {len(frame_entries)} frames")
 
-        final_output = OUTPUT_DIR / f"{safe_title}.mp4"
+        final_output = RETRO_OUTPUT_DIR / f"{safe_title}.mp4"
         update_job_status(job_id, "processing", progress="Building video...")
 
         shake_cfg = RETRO_CONFIG["video"].get("effects", {}).get("shake_zoom", {})
@@ -2089,6 +2094,23 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
             ]
             subprocess.run(cmd, check=True)
             scenes_processed = len(video_clips)
+
+        # STEP 6: SUBTITLES (N8N)
+        subtitles_enabled = data.get("subtitles", True)
+        if subtitles_enabled and transcribed_words:
+            log(f"\n>>> [N8N] STEP 6: SUBTITLES")
+            update_job_status(job_id, "processing", progress="Burning subtitles...")
+            ass_path = work_dir / "subtitles.ass"
+            
+            retro_style = RETRO_CONFIG.get("subtitles", {})
+            generate_word_subtitles(
+                transcribed_words, str(ass_path), style=retro_style
+            )
+            final_subs = RETRO_OUTPUT_DIR / f"{safe_title}_subs.mp4"
+            burn_subtitles(str(final_output), str(ass_path), str(final_subs))
+            if final_subs.exists() and final_subs.stat().st_size > 1000:
+                final_output.unlink()
+                final_subs.rename(final_output)
 
         shutil.rmtree(work_dir)
         file_size_mb = round(final_output.stat().st_size / 1024 / 1024, 2)

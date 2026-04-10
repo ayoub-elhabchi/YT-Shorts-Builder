@@ -22,7 +22,7 @@
       "shake_zoom": {
         "enabled": true,
         "shake_intensity": 0.3,
-        "zoom_out_factor": 1.1,
+        "zoom_out": 1.1,
         "duration": 0.3
       }
     }

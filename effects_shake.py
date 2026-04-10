@@ -10,7 +10,7 @@ try:
 except AttributeError:
     RESAMPLE_FILTER = Image.ANTIALIAS
 
-def apply_shake_zoom_effect(img, progress, shake_intensity=0.5, zoom_out_factor=1.1, width=1080, height=1920):
+def apply_shake_zoom_effect(img, progress, shake_intensity=0.5, zoom_out_factor=1.1, width=1080, height=1920, shake_config=None):
     """
     Applies a shaking effect combined with zoom out to a PIL image.
     
@@ -22,6 +22,15 @@ def apply_shake_zoom_effect(img, progress, shake_intensity=0.5, zoom_out_factor=
         width: Target width (default 1080)
         height: Target height (default 1920)
     """
+    if shake_config:
+        shake_intensity = float(shake_config.get("shake_intensity", shake_intensity))
+        if "zoom_out" in shake_config:
+            zoom_out_factor = float(shake_config["zoom_out"])
+        elif "zoom_in" in shake_config:
+            # zoom_in: 1.1 becomes zoom_out_factor: 1/1.1
+            zoom_out_factor = 1.0 / max(0.001, float(shake_config["zoom_in"]))
+        elif "zoom_out_factor" in shake_config:
+            zoom_out_factor = float(shake_config["zoom_out_factor"])
     progress = max(0.0, min(1.0, float(progress)))
     img_w, img_h = img.size
     target_ratio = width / height
@@ -36,7 +45,15 @@ def apply_shake_zoom_effect(img, progress, shake_intensity=0.5, zoom_out_factor=
         base_h = int(img_w / target_ratio)
 
     # Apply zoom out effect
-    zoom_factor = 1.0 + (zoom_out_factor - 1.0) * progress
+    # To truly 'zoom out', we need to start zoomed in and end at 1.0
+    z_factor = float(zoom_out_factor)
+    if z_factor > 1.0:
+        zoom_factor = z_factor - (z_factor - 1.0) * progress
+    elif z_factor < 1.0:
+        target_zoom = 1.0 / max(0.001, z_factor)
+        zoom_factor = 1.0 + (target_zoom - 1.0) * progress
+    else:
+        zoom_factor = 1.0
     crop_w = base_w / zoom_factor
     crop_h = base_h / zoom_factor
 
