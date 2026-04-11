@@ -4,13 +4,14 @@
     "default_bgm_volume": 0.2
   },
   "subtitles": {
+    "enabled": true,
+    "highlight_spoken_word": true,
     "layout_mode": "kinetic",
     "font_name": "Georgia",
-    "font_size_word": 92,
+    "font_size_word": 100,
     "font_size_highlight": 72,
-    "font_color_primary": "&H00F0EAD6",
-    "font_color_white": "&H00FFFFFF",
-    "font_color_context": "&H00FFFFFF",
+    "font_color_primary": "&H0000FFFF",
+    "font_color_white": "&H00FFFFFF", 
     "margin_v": 350,
     "alignment": 2
   },

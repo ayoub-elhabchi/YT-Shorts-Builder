@@ -1217,6 +1217,11 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # Decrease font size for inline
             inline_size = int(size_large * 0.6)  # 60% of large size
 
+            # Get highlight settings
+            highlight_enabled = style.get("highlight_spoken_word", False)
+            color_yellow = style.get("font_color_primary", "&H00F0EAD6")
+            color_white = style.get("font_color_white", "&H00FFFFFF")
+
             # Create a single dialogue event for the entire chunk
             # Words will be animated to appear one by one and stay visible
             layer = 0
@@ -1229,36 +1234,90 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     txt = w["word"].strip()
                     if wj <= wi:
                         # Current and previous words: visible
-                        text_parts.append(txt)
+                        if highlight_enabled and wj == wi:
+                            # Current word: yellow
+                            text_parts.append(f"{{\\c{color_yellow}&}}{txt}")
+                        else:
+                            # Previous words: white
+                            text_parts.append(f"{{\\c{color_white}&}}{txt}")
                     else:
                         # Future words: hidden (transparent)
                         text_parts.append(f"{{\\alpha&HFF&}}{txt}")
 
+                # Join with extra spacing (2px more than default)
+                spaced_text = "  ".join(text_parts)  # Double space for extra 2px
+
                 events.append(
                     f"Dialogue: {layer},{w_start},{chunk_end},"
                     f"KLarge,,0,0,0,,"
-                    f"{{\\pos({base_x},{base_y})\\fs{inline_size}}}{' '.join(text_parts)}"
+                    f"{{\\pos({base_x},{base_y})\\fs{inline_size}\\fn{font_name}}}{spaced_text}"
                 )
                 layer += 1
         else:
-            # KINETIC BEHAVIOR: Diagonal staggering
+            # KINETIC BEHAVIOR: Diagonal staggering with highlighting
             # Pick a fresh starting anchor for this chunk (center-ish, slightly varied)
             cur_x = _rnd.randint(310, 470)
             cur_y = _rnd.randint(760, 900)
 
+            # Get highlight settings
+            highlight_enabled = style.get("highlight_spoken_word", False)
+            color_yellow = style.get("font_color_primary", "&H00F0EAD6")
+            color_white = style.get("font_color_white", "&H00FFFFFF")
+
             layer = 0
-            for wobj in chunk:
+            for wi, wobj in enumerate(chunk):
                 w_start = format_ass_time(wobj["start"])
-                txt = wobj["word"].strip()  # Preserve original case and punctuation
+                w_end = format_ass_time(
+                    chunk[wi + 1]["start"] if wi < len(chunk) - 1 else chunk_end_t
+                )
+
+                txt = wobj["word"].strip()
                 wsize = _kinetic_word_size(txt, size_large, size_small)
                 style_name = "KLarge" if wsize == size_large else "KSmall"
 
-                events.append(
-                    f"Dialogue: {layer},{w_start},{chunk_end},"
-                    f"{style_name},,0,0,0,,"
-                    f"{{\\pos({cur_x},{cur_y})\\fs{wsize}}}{txt}"
-                )
-                layer += 1
+                # Calculate position for this word
+                word_x = cur_x
+                word_y = cur_y
+
+                if highlight_enabled:
+                    # Create two dialogue events for each word:
+                    # 1. When being spoken: yellow
+                    # 2. When not being spoken: white
+
+                    # Event 1: Yellow when being spoken
+                    events.append(
+                        f"Dialogue: {layer},{w_start},{w_end},"
+                        f"{style_name},,0,0,0,,"
+                        f"{{\\pos({word_x},{word_y})\\fs{wsize}\\c{color_yellow}}}{txt}"
+                    )
+                    layer += 1
+
+                    # Event 2: White when not being spoken (before and after)
+                    if wi > 0:
+                        # Before being spoken: white from chunk start to word start
+                        events.append(
+                            f"Dialogue: {layer},{format_ass_time(chunk[0]['start'])},{w_start},"
+                            f"{style_name},,0,0,0,,"
+                            f"{{\\pos({word_x},{word_y})\\fs{wsize}\\c{color_white}}}{txt}"
+                        )
+                        layer += 1
+
+                    if wi < len(chunk) - 1:
+                        # After being spoken: white from word end to chunk end
+                        events.append(
+                            f"Dialogue: {layer},{w_end},{chunk_end},"
+                            f"{style_name},,0,0,0,,"
+                            f"{{\\pos({word_x},{word_y})\\fs{wsize}\\c{color_white}}}{txt}"
+                        )
+                        layer += 1
+                else:
+                    # No highlighting: single event with default color
+                    events.append(
+                        f"Dialogue: {layer},{w_start},{chunk_end},"
+                        f"{style_name},,0,0,0,,"
+                        f"{{\\pos({word_x},{word_y})\\fs{wsize}}}{txt}"
+                    )
+                    layer += 1
 
                 # Diagonal step: right + down with randomised variance
                 step_x = _rnd.randint(55, 110)
@@ -2318,13 +2377,13 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
             scenes_processed = len(video_clips)
 
         # STEP 6: SUBTITLES (N8N)
-        subtitles_enabled = data.get("subtitles", True)
+        retro_style = RETRO_CONFIG.get("subtitles", {})
+        subtitles_enabled = retro_style.get("enabled", True) and data.get("subtitles", True)
         if subtitles_enabled and transcribed_words:
             log(f"\n>>> [N8N] STEP 6: SUBTITLES")
             update_job_status(job_id, "processing", progress="Burning subtitles...")
             ass_path = work_dir / "subtitles.ass"
 
-            retro_style = RETRO_CONFIG.get("subtitles", {})
             layout_mode = retro_style.get("layout_mode", "standard")
 
             if layout_mode == "kinetic":

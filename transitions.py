@@ -313,7 +313,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                         p_out = (t - scenes_data[bi]['start']) / max(0.1, scenes_data[bi]['end'] - scenes_data[bi]['start'])
                         img_out = apply_ken_burns(scenes_data[bi]['raw_image'], max(0.0, min(1.0, p_out)), scenes_data[bi]['kb_effect'], width, height)
                     elif scenes_data[bi].get('shake_effect'):
-                        p_out = (t - scenes_data[bi]['start']) / max(0.1, scenes_data[bi]['end'] - scenes_data[bi]['start'])
+                        p_out = t / total_duration  # Continuous from start to end
                         shk = scenes_data[bi]['shake_effect']
                         img_out = apply_shake_zoom_effect(scenes_data[bi]['raw_image'], max(0.0, min(1.0, p_out)), width=width, height=height, shake_config=shk)
 
@@ -321,7 +321,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                         p_in = (t - scenes_data[bi + 1]['start']) / max(0.1, scenes_data[bi + 1]['end'] - scenes_data[bi + 1]['start'])
                         img_in = apply_ken_burns(scenes_data[bi + 1]['raw_image'], max(0.0, min(1.0, p_in)), scenes_data[bi + 1]['kb_effect'], width, height)
                     elif scenes_data[bi + 1].get('shake_effect'):
-                        p_in = (t - scenes_data[bi + 1]['start']) / max(0.1, scenes_data[bi + 1]['end'] - scenes_data[bi + 1]['start'])
+                        p_in = t / total_duration  # Continuous from start to end
                         shk = scenes_data[bi + 1]['shake_effect']
                         img_in = apply_shake_zoom_effect(scenes_data[bi + 1]['raw_image'], max(0.0, min(1.0, p_in)), width=width, height=height, shake_config=shk)
                     
@@ -344,7 +344,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                         s_prog = (t - scenes_data[0]['start']) / max(0.1, scenes_data[0]['end'] - scenes_data[0]['start'])
                         img_target = apply_ken_burns(scenes_data[0]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[0]['kb_effect'], width, height)
                     elif scenes_data[0].get('shake_effect'):
-                        s_prog = (t - scenes_data[0]['start']) / max(0.1, scenes_data[0]['end'] - scenes_data[0]['start'])
+                        s_prog = t / total_duration  # Continuous from start to end
                         shk = scenes_data[0]['shake_effect']
                         img_target = apply_shake_zoom_effect(scenes_data[0]['raw_image'], max(0.0, min(1.0, s_prog)), width=width, height=height, shake_config=shk)
                     
@@ -364,7 +364,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                         s_prog = (t - scenes_data[-1]['start']) / max(0.1, scenes_data[-1]['end'] - scenes_data[-1]['start'])
                         img_source = apply_ken_burns(scenes_data[-1]['raw_image'], max(0.0, min(1.0, s_prog)), scenes_data[-1]['kb_effect'], width, height)
                     elif scenes_data[-1].get('shake_effect'):
-                        s_prog = (t - scenes_data[-1]['start']) / max(0.1, scenes_data[-1]['end'] - scenes_data[-1]['start'])
+                        s_prog = t / total_duration  # Continuous from start to end
                         shk = scenes_data[-1]['shake_effect']
                         img_source = apply_shake_zoom_effect(scenes_data[-1]['raw_image'], max(0.0, min(1.0, s_prog)), width=width, height=height, shake_config=shk)
                         
@@ -380,7 +380,7 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
                         process.stdin.write(frame.tobytes())
                     elif scenes_data[si].get('shake_effect'):
                         # --- GENERATE SHAKE FRAME ON THE FLY ---
-                        s_prog = (t - scenes_data[si]['start']) / max(0.1, scenes_data[si]['end'] - scenes_data[si]['start'])
+                        s_prog = t / total_duration  # Continuous from start to end
                         shk = scenes_data[si]['shake_effect']
                         frame = apply_shake_zoom_effect(scenes_data[si]['raw_image'], max(0.0, min(1.0, s_prog)), width=width, height=height, shake_config=shk)
                         process.stdin.write(frame.tobytes())
