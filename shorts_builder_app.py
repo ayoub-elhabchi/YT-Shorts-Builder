@@ -1053,92 +1053,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return ass_path
 
 
-def generate_diagonal_pop_subtitles(word_timestamps, ass_path, style=None):
-    """
-    Generates a diagonal stair-step 3-word subtitle layout:
-      [prev word]  ← small, Top-Left offset
-      [ACTIVE]     ← BIG, Dead Center
-      [next word]  ← small, Bottom-Right offset
 
-    Each word frame produces 3 concurrent ASS Dialogue events
-    sharing identical timestamps.
-    """
-    if style is None:
-        style = {}
-
-    font_name  = style.get("font_name", "Georgia")
-    font_size  = int(style.get("font_size_word", 90))
-    color_pri  = style.get("font_color_primary", "&H0000FFFF")   # active word
-    color_ctx  = style.get("font_color_context", "&H00FFFFFF")   # context words
-    margin_v   = int(style.get("margin_v", 350))
-
-    # Vertical positions (absolute, for 1080x1920 canvas)
-    y_prev   = 840    # above center
-    y_active = 960    # dead center
-    y_next   = 1080   # below center
-
-    # Horizontal positions for the stair-step diagonal feel
-    x_prev   = 370    # shifted left
-    x_active = 540    # dead center
-    x_next   = 710    # shifted right
-
-    header = f"""\
-[Script Info]
-ScriptType: v4.00+
-PlayResX: 1080
-PlayResY: 1920
-WrapStyle: 0
-ScaledBorderAndShadow: yes
-
-[V4+ Styles]
-Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
-Style: DiagActive,{font_name},{font_size},{color_pri},&H000000FF,&H00000000,&H80000000,-1,0,0,0,100,100,0,0,1,4,2,5,30,30,{margin_v},1
-Style: DiagCtx,{font_name},{int(font_size * 0.62)},{color_ctx},&H000000FF,&H00000000,&H80000000,0,0,0,0,100,100,0,0,1,3,1,5,30,30,{margin_v},1
-
-[Events]
-Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
-"""
-
-    events = []
-    words = word_timestamps
-
-    for wi, cw in enumerate(words):
-        w_start = format_ass_time(cw["start"])
-        w_end   = format_ass_time(
-            words[wi + 1]["start"] if wi < len(words) - 1 else cw["end"]
-        )
-
-        active_txt = cw["word"].strip().upper()
-        prev_txt   = words[wi - 1]["word"].strip().upper() if wi > 0 else ""
-        next_txt   = words[wi + 1]["word"].strip().upper() if wi < len(words) - 1 else ""
-
-        # Previous word — top-left
-        if prev_txt:
-            events.append(
-                f"Dialogue: 0,{w_start},{w_end},DiagCtx,,0,0,0,"
-                f",{{\\pos({x_prev},{y_prev})}}{prev_txt}"
-            )
-
-        # Active word — dead center, big
-        events.append(
-            f"Dialogue: 1,{w_start},{w_end},DiagActive,,0,0,0,"
-            f",{{\\pos({x_active},{y_active})}}{active_txt}"
-        )
-
-        # Next word — bottom-right
-        if next_txt:
-            events.append(
-                f"Dialogue: 0,{w_start},{w_end},DiagCtx,,0,0,0,"
-                f",{{\\pos({x_next},{y_next})}}{next_txt}"
-            )
-
-    with open(ass_path, "w", encoding="utf-8-sig") as f:
-        f.write(header)
-        f.write("\n".join(events))
-        f.write("\n")
-
-    log(f"   ✅ {len(events)} diagonal pop events")
-    return ass_path
 
 
 # -- Kinetic Typography helpers --
@@ -1172,18 +1087,28 @@ def _kinetic_detect_blocks(words, pause_threshold=0.38, max_block=5):
     return blocks
 
 
+def _kinetic_group_fixed_chunks(words, chunk_size=3):
+    """Split word list into fixed-size chunks of exactly 3 words."""
+    chunks = []
+    for i in range(0, len(words), chunk_size):
+        chunk = words[i:i + chunk_size]
+        if len(chunk) > 0:
+            chunks.append(chunk)
+    return chunks
+
+
 def generate_kinetic_subtitles(word_timestamps, ass_path, style=None):
     """
-    Freeform Kinetic Typography subtitle renderer.
+    Freeform Kinetic Typography subtitle renderer with random alternating behaviors.
 
     Rules:
-    - Words are grouped into visual 'thought blocks' by silence gaps.
-    - Within each block, words build *additively* — each word pops in at its
-      audio timestamp and STAYS visible until the block ends (hard cut).
-    - Adjacent words whose gap < 0.15s pop in as a phrase simultaneously.
-    - Font size alternates dramatically: content words = large, function words = small.
-    - Each word is placed at a diagonally staggered position within the block.
-    - No sliding/bouncing transitions — pure hard pop.
+    - Words are grouped into fixed chunks of exactly 3 words
+    - For each chunk, randomly choose between:
+      * KINETIC: Diagonal staggering, additive display, random starting positions
+      * INLINE: Horizontal layout on one line, random positioning (center_left/center/center_right)
+    - Each word appears at its exact spoken timestamp
+    - All words in a chunk stay visible until the first word of the next chunk is spoken
+    - No sliding/bouncing transitions — pure hard pop
     """
     import random as _rnd
 
@@ -1217,42 +1142,82 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     events = []
     _rnd.seed(42)   # stable seed → deterministic layout per video
 
-    blocks = _kinetic_detect_blocks(word_timestamps)
+    # Group words into fixed 3-word chunks
+    chunks = _kinetic_group_fixed_chunks(word_timestamps, chunk_size=3)
 
-    for block in blocks:
-        block_end_t  = block[-1]["end"]
-        block_end    = format_ass_time(block_end_t)
+    for chunk_idx, chunk in enumerate(chunks):
+        # Determine when this chunk ends (first word of next chunk, or last word's end)
+        if chunk_idx < len(chunks) - 1:
+            chunk_end_t = chunks[chunk_idx + 1][0]["start"]
+        else:
+            chunk_end_t = chunk[-1]["end"]
+        chunk_end = format_ass_time(chunk_end_t)
 
-        # Pick a fresh starting anchor for this block (center-ish, slightly varied)
-        cur_x = _rnd.randint(310, 470)
-        cur_y = _rnd.randint(760, 900)
+        # Randomly choose behavior for this chunk
+        use_inline = _rnd.choice([True, False])
 
-        layer = 0
-        for wobj in block:
-            w_start = format_ass_time(wobj["start"])
-            txt     = wobj["word"].strip().upper()
-            wsize   = _kinetic_word_size(txt, size_large, size_small)
-            style_name = "KLarge" if wsize == size_large else "KSmall"
+        if use_inline:
+            # INLINE BEHAVIOR: Horizontal layout on one line, always centered
+            base_x, base_y = 540, 960  # Always center
 
-            events.append(
-                f"Dialogue: {layer},{w_start},{block_end},"
-                f"{style_name},,0,0,0,,"
-                f"{{\\pos({cur_x},{cur_y})\\fs{wsize}}}{txt}"
-            )
-            layer += 1
+            # Calculate horizontal spacing for 3 words
+            # Use fixed spacing between words (40px) instead of estimating widths
+            word_count = len(chunk)
+            spacing = 40  # Fixed spacing between words
+            total_width = (word_count - 1) * spacing
+            start_x = base_x - total_width // 2
 
-            # Diagonal step: right + down with randomised variance
-            step_x = _rnd.randint(55, 110)
-            step_y = _rnd.randint(75, 125)
-            cur_x  = min(cur_x + step_x, 730)
-            cur_y  = min(cur_y + step_y, 1680)
+            # Place words horizontally with fixed spacing
+            layer = 0
+            current_x = start_x
+            for wobj in chunk:
+                w_start = format_ass_time(wobj["start"])
+                txt = wobj["word"].strip().upper()
+                # Use default font size for inline (not alternating)
+                wsize = size_large
+                style_name = "KLarge"
+
+                events.append(
+                    f"Dialogue: {layer},{w_start},{chunk_end},"
+                    f"{style_name},,0,0,0,,"
+                    f"{{\\pos({current_x},{base_y})\\fs{wsize}}}{txt}"
+                )
+                layer += 1
+
+                # Move to next word position with fixed spacing
+                current_x += spacing
+        else:
+            # KINETIC BEHAVIOR: Diagonal staggering
+            # Pick a fresh starting anchor for this chunk (center-ish, slightly varied)
+            cur_x = _rnd.randint(310, 470)
+            cur_y = _rnd.randint(760, 900)
+
+            layer = 0
+            for wobj in chunk:
+                w_start = format_ass_time(wobj["start"])
+                txt = wobj["word"].strip().upper()
+                wsize = _kinetic_word_size(txt, size_large, size_small)
+                style_name = "KLarge" if wsize == size_large else "KSmall"
+
+                events.append(
+                    f"Dialogue: {layer},{w_start},{chunk_end},"
+                    f"{style_name},,0,0,0,,"
+                    f"{{\\pos({cur_x},{cur_y})\\fs{wsize}}}{txt}"
+                )
+                layer += 1
+
+                # Diagonal step: right + down with randomised variance
+                step_x = _rnd.randint(55, 110)
+                step_y = _rnd.randint(75, 125)
+                cur_x = min(cur_x + step_x, 730)
+                cur_y = min(cur_y + step_y, 1680)
 
     with open(ass_path, "w", encoding="utf-8-sig") as f:
         f.write(header)
         f.write("\n".join(events))
         f.write("\n")
 
-    log(f"   ✅ {len(events)} kinetic events across {len(blocks)} blocks")
+    log(f"   ✅ {len(events)} kinetic events across {len(chunks)} chunks")
     return ass_path
 
 
@@ -2304,16 +2269,12 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
             log(f"\n>>> [N8N] STEP 6: SUBTITLES")
             update_job_status(job_id, "processing", progress="Burning subtitles...")
             ass_path = work_dir / "subtitles.ass"
-            
+
             retro_style = RETRO_CONFIG.get("subtitles", {})
             layout_mode = retro_style.get("layout_mode", "standard")
 
             if layout_mode == "kinetic":
                 generate_kinetic_subtitles(
-                    transcribed_words, str(ass_path), style=retro_style
-                )
-            elif layout_mode == "diagonal_pop":
-                generate_diagonal_pop_subtitles(
                     transcribed_words, str(ass_path), style=retro_style
                 )
             else:
