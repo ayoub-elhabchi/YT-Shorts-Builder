@@ -275,7 +275,7 @@ def find_frame_b_start(transcribed_words, frame_b_text, scene_start, scene_end):
     if not match_words:
         return scene_start + (scene_end - scene_start) * 0.5
 
-    trans_clean = [clean_word(w["word"]) for w in transcribed_words]
+    trans_clean = [w.get("word_clean", clean_word(w["word"])) for w in transcribed_words]
 
     # Only search within the scene's time window
     window_words = [
@@ -617,7 +617,8 @@ def transcribe_audio_with_whisper(audio_path):
         for w in seg.get("words", []):
             all_words.append(
                 {
-                    "word": w["word"].strip().lower(),
+                    "word": w["word"].strip(),  # Preserve original with punctuation
+                    "word_clean": w["word"].strip().lower(),  # For matching
                     "start": w["start"],
                     "end": w["end"],
                 }
@@ -643,7 +644,7 @@ def align_scenes_to_timestamps(transcribed_words, scene_texts):
         f"🔍 Aligning {num_scenes} scenes to {len(transcribed_words)} words ({total_duration:.2f}s)"
     )
 
-    trans_clean = [clean_word(w["word"]) for w in transcribed_words]
+    trans_clean = [w.get("word_clean", clean_word(w["word"])) for w in transcribed_words]
     scene_positions = []
 
     for si, text in enumerate(scene_texts):
@@ -1087,14 +1088,42 @@ def _kinetic_detect_blocks(words, pause_threshold=0.38, max_block=5):
     return blocks
 
 
-def _kinetic_group_fixed_chunks(words, chunk_size=3):
-    """Split word list into fixed-size chunks of exactly 3 words."""
+def _kinetic_group_by_punctuation(words, max_chunk_size=4):
+    """
+    Split words into chunks based on punctuation (.,) with max chunk size.
+    - Words ending with . or , create chunk boundaries
+    - Chunks longer than max_chunk_size are split into sub-chunks
+    - Returns list of word chunks
+    """
     chunks = []
-    for i in range(0, len(words), chunk_size):
-        chunk = words[i:i + chunk_size]
-        if len(chunk) > 0:
-            chunks.append(chunk)
-    return chunks
+    current_chunk = []
+
+    for w in words:
+        current_chunk.append(w)
+
+        # Check if word ends with punctuation
+        word_text = w["word"].strip()
+        if word_text.endswith(('.', ',')):
+            # End of chunk
+            if current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = []
+
+    # Add remaining words (last chunk without punctuation)
+    if current_chunk:
+        chunks.append(current_chunk)
+
+    # Split long chunks into smaller sub-chunks
+    final_chunks = []
+    for chunk in chunks:
+        if len(chunk) > max_chunk_size:
+            # Split into max_chunk_size chunks
+            for i in range(0, len(chunk), max_chunk_size):
+                final_chunks.append(chunk[i:i+max_chunk_size])
+        else:
+            final_chunks.append(chunk)
+
+    return final_chunks
 
 
 def generate_kinetic_subtitles(word_timestamps, ass_path, style=None):
@@ -1142,8 +1171,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     events = []
     _rnd.seed(42)   # stable seed → deterministic layout per video
 
-    # Group words into fixed 3-word chunks
-    chunks = _kinetic_group_fixed_chunks(word_timestamps, chunk_size=3)
+    # Group words by punctuation with max 4 words per chunk
+    chunks = _kinetic_group_by_punctuation(word_timestamps, max_chunk_size=4)
+
+    # Debug: Log chunk sizes
+    for i, chunk in enumerate(chunks):
+        log(f"   Chunk {i}: {len(chunk)} words")
 
     for chunk_idx, chunk in enumerate(chunks):
         # Determine when this chunk ends (first word of next chunk, or last word's end)
@@ -1153,28 +1186,42 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             chunk_end_t = chunk[-1]["end"]
         chunk_end = format_ass_time(chunk_end_t)
 
-        # Randomly choose behavior for this chunk
-        use_inline = _rnd.choice([True, False])
+        # Deterministic style selection based on punctuation
+        # Check last word of chunk for punctuation
+        last_word = chunk[-1]["word"].strip()
+        if last_word.endswith('.'):
+            # Sentence ending with period → KINETIC
+            use_inline = False
+            behavior = "KINETIC (sentence)"
+        elif last_word.endswith(','):
+            # Phrase ending with comma → INLINE
+            use_inline = True
+            behavior = "INLINE (phrase)"
+        else:
+            # No punctuation (last chunk) → KINETIC
+            use_inline = False
+            behavior = "KINETIC (no punctuation)"
+
+        log(f"   Chunk {chunk_idx}: {behavior} ({len(chunk)} words)")
 
         if use_inline:
-            # INLINE BEHAVIOR: Horizontal layout on one line, always centered
+            # INLINE BEHAVIOR: Words appear one by one with fixed spacing
             base_x, base_y = 540, 960  # Always center
 
-            # Calculate horizontal spacing for 3 words
-            # Use fixed spacing between words (40px) instead of estimating widths
+            # Use large fixed spacing between words to prevent overlap
+            spacing = 200  # Large spacing between words
             word_count = len(chunk)
-            spacing = 40  # Fixed spacing between words
             total_width = (word_count - 1) * spacing
             start_x = base_x - total_width // 2
 
-            # Place words horizontally with fixed spacing
+            # Place words horizontally with large fixed spacing
             layer = 0
             current_x = start_x
             for wobj in chunk:
                 w_start = format_ass_time(wobj["start"])
-                txt = wobj["word"].strip().upper()
-                # Use default font size for inline (not alternating)
-                wsize = size_large
+                txt = wobj["word"].strip()  # Preserve original case and punctuation
+                # Use smaller font size for inline (80% of large)
+                wsize = int(size_large * 0.8)
                 style_name = "KLarge"
 
                 events.append(
@@ -1184,7 +1231,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
                 layer += 1
 
-                # Move to next word position with fixed spacing
+                # Move to next word position with large fixed spacing
                 current_x += spacing
         else:
             # KINETIC BEHAVIOR: Diagonal staggering
@@ -1195,7 +1242,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             layer = 0
             for wobj in chunk:
                 w_start = format_ass_time(wobj["start"])
-                txt = wobj["word"].strip().upper()
+                txt = wobj["word"].strip()  # Preserve original case and punctuation
                 wsize = _kinetic_word_size(txt, size_large, size_small)
                 style_name = "KLarge" if wsize == size_large else "KSmall"
 
