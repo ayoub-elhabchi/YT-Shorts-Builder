@@ -1179,6 +1179,10 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         log(f"   Chunk {i}: {len(chunk)} words")
 
     for chunk_idx, chunk in enumerate(chunks):
+        # Debug: Show actual word text in this chunk
+        chunk_words = [w["word"].strip() for w in chunk]
+        log(f"   Chunk {chunk_idx} words: {chunk_words}")
+
         # Determine when this chunk ends (first word of next chunk, or last word's end)
         if chunk_idx < len(chunks) - 1:
             chunk_end_t = chunks[chunk_idx + 1][0]["start"]
@@ -1189,10 +1193,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         # Deterministic style selection based on punctuation
         # Check last word of chunk for punctuation
         last_word = chunk[-1]["word"].strip()
+        log(f"   Chunk {chunk_idx} last word: '{last_word}'")
+
         if last_word.endswith('.'):
-            # Sentence ending with period → KINETIC
-            use_inline = False
-            behavior = "KINETIC (sentence)"
+            # Sentence ending with period → Randomly choose KINETIC or INLINE
+            use_inline = _rnd.choice([True, False])
+            behavior = "INLINE (sentence)" if use_inline else "KINETIC (sentence)"
         elif last_word.endswith(','):
             # Phrase ending with comma → INLINE
             use_inline = True
@@ -1205,34 +1211,35 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
         log(f"   Chunk {chunk_idx}: {behavior} ({len(chunk)} words)")
 
         if use_inline:
-            # INLINE BEHAVIOR: Words appear one by one with fixed spacing
+            # INLINE BEHAVIOR: Whole phrase centered, words appear one by one and stay visible
             base_x, base_y = 540, 960  # Always center
 
-            # Use large fixed spacing between words to prevent overlap
-            spacing = 200  # Large spacing between words
-            word_count = len(chunk)
-            total_width = (word_count - 1) * spacing
-            start_x = base_x - total_width // 2
+            # Decrease font size for inline
+            inline_size = int(size_large * 0.6)  # 60% of large size
 
-            # Place words horizontally with large fixed spacing
+            # Create a single dialogue event for the entire chunk
+            # Words will be animated to appear one by one and stay visible
             layer = 0
-            current_x = start_x
-            for wobj in chunk:
+            for wi, wobj in enumerate(chunk):
                 w_start = format_ass_time(wobj["start"])
-                txt = wobj["word"].strip()  # Preserve original case and punctuation
-                # Use smaller font size for inline (80% of large)
-                wsize = int(size_large * 0.8)
-                style_name = "KLarge"
+
+                # Build text with current and previous words visible, future words hidden
+                text_parts = []
+                for wj, w in enumerate(chunk):
+                    txt = w["word"].strip()
+                    if wj <= wi:
+                        # Current and previous words: visible
+                        text_parts.append(txt)
+                    else:
+                        # Future words: hidden (transparent)
+                        text_parts.append(f"{{\\alpha&HFF&}}{txt}")
 
                 events.append(
                     f"Dialogue: {layer},{w_start},{chunk_end},"
-                    f"{style_name},,0,0,0,,"
-                    f"{{\\pos({current_x},{base_y})\\fs{wsize}}}{txt}"
+                    f"KLarge,,0,0,0,,"
+                    f"{{\\pos({base_x},{base_y})\\fs{inline_size}}}{' '.join(text_parts)}"
                 )
                 layer += 1
-
-                # Move to next word position with large fixed spacing
-                current_x += spacing
         else:
             # KINETIC BEHAVIOR: Diagonal staggering
             # Pick a fresh starting anchor for this chunk (center-ish, slightly varied)
