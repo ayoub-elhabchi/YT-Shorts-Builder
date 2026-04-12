@@ -1,7 +1,7 @@
 {
   "audio": {
     "add_bgm_by_default": true,
-    "default_bgm_volume": 0.2
+    "default_bgm_volume": 0.05
   },
   "subtitles": {
     "enabled": true,
@@ -17,7 +17,7 @@
   },
   "video": {
     "default_transition": "none",
-    "default_transition_duration": 0.5,
+    "default_transition_duration": 1,
     "ken_burns_movement": false,
     "use_overlay": false,
     "overlay_opacity": 0.15,

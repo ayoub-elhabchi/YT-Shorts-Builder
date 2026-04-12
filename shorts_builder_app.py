@@ -33,7 +33,6 @@ try:
     )
 except ImportError:
     PILLOW_AVAILABLE = False
-    VALID_TRANSITIONS = ["none"]
 
 # Effects module
 try:
@@ -343,7 +342,7 @@ def expand_scenes_to_frames(scenes, scenes_timing, transcribed_words):
                     "duration": timing["duration"],
                     "scene_index": scene.get("index", 0),
                     "frame_label": "A",
-                    "transition": scene.get("transition", "none"),
+                "transition": frame_a.get("transition", "none"),
                     "ken_burns_effect": scene.get("ken_burns_effect"),
                     # NEW - each frame carries its own overlay
                     "overlay": frame_a.get("overlay", False),  # for frame A
@@ -397,7 +396,7 @@ def expand_scenes_to_frames(scenes, scenes_timing, transcribed_words):
                     "duration": round(timing["end"] - frame_b_start, 2),
                     "scene_index": scene.get("index", 0),
                     "frame_label": "B",
-                    "transition": "none",  # No transition between A and B of same scene
+                    "transition": frame_b.get("transition", "none"),
                     "ken_burns_effect": scene.get("ken_burns_effect"),
                     'overlay': frame_b.get('overlay', False),        # ← frame-level
                     "evidence_card": None,  # Evidence card shown on frame A only
@@ -1609,7 +1608,11 @@ def build_video_async(job_id, data, webhook_url, base_url):
         final_output = OUTPUT_DIR / f"{safe_title}.mp4"
         update_job_status(job_id, "processing", progress="Building video...")
 
-        if transition_effect != "none" or use_ken_burns:
+        # Check if any frame has a transition or ken burns effect
+        has_frame_transitions = any(frame.get("transition") and frame.get("transition").strip() for frame in frame_entries)
+        has_frame_ken_burns = any(frame.get("ken_burns_effect") for frame in frame_entries)
+
+        if transition_effect != "none" or use_ken_burns or has_frame_transitions or has_frame_ken_burns:
             log(f"\n>>> STEP 4: BUILD ADVANCED PATH")
             scenes_data = []
             for idx, frame in enumerate(frame_entries, 1):
@@ -2144,6 +2147,11 @@ def expand_scenes_to_frames_n8n(scenes, scenes_timing, transcribed_words):
 
         for i, (frame, frame_timing) in enumerate(zip(frames, frame_timings)):
             frame_label = chr(65 + i)
+            # Preference: Frame transition > Scene transition (for first frame) > default none
+            frame_transition = frame.get("transition")
+            if not frame_transition:
+                frame_transition = transition if i == 0 else "none"
+
             frame_entries.append({
                 "image_url": frame.get("image_url", ""),
                 "voice_text": frame.get("voice_text", ""),
@@ -2153,7 +2161,7 @@ def expand_scenes_to_frames_n8n(scenes, scenes_timing, transcribed_words):
                 "duration": frame_timing["duration"],
                 "scene_index": scene_index,
                 "frame_label": frame_label,
-                "transition": transition if i == 0 else "none",
+                "transition": frame_transition,
                 "ken_burns_effect": scene.get("ken_burns_effect"),
             })
 
@@ -2241,7 +2249,26 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
         shake_cfg = RETRO_CONFIG["video"].get("effects", {}).get("shake_zoom", {})
         shake_zoom_enabled = shake_cfg.get("enabled", False)
 
-        if transition_effect != "none" or use_ken_burns or shake_zoom_enabled:
+        # Check if any frame has a transition or ken burns effect
+        has_frame_transitions = any(
+            f.get("transition") and f.get("transition") != "none"
+            for s in scenes
+            for f in s.get("frames", [])
+        )
+        has_scene_transitions = any(
+            s.get("transition") and s.get("transition") != "none"
+            for s in scenes
+        )
+        has_frame_ken_burns = any(s.get("ken_burns_effect") for s in scenes)
+
+        if (
+            transition_effect != "none"
+            or use_ken_burns
+            or shake_zoom_enabled
+            or has_frame_transitions
+            or has_scene_transitions
+            or has_frame_ken_burns
+        ):
             log(f"\n>>> [N8N] STEP 4: BUILD ADVANCED PATH")
             
             scenes_data = []

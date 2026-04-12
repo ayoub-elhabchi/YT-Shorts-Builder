@@ -234,7 +234,14 @@ def build_video_with_transitions(scenes_data, audio_path, output_path,
     num_scenes = len(scenes_data)
 
     log(f"   🎞️ Generating {total_frames} frames ({total_duration:.2f}s @ {fps}fps)")
-    log(f"   🔄 Effect: {transition_effect} ({transition_duration}s)")
+    log(f"   🔄 Global Effect: {transition_effect} ({transition_duration}s)")
+    log(f"   📊 Scenes: {num_scenes}")
+
+    # Log per-scene transitions
+    for i, scene in enumerate(scenes_data):
+        trans = scene.get('transition', 'none')
+        dur = scene.get('transition_duration', 0.5)
+        log(f"      Scene {i}: {trans} ({dur}s) [{scene['start']:.2f}s → {scene['end']:.2f}s]")
 
     black = Image.new('RGB', (width, height), (0, 0, 0))
 
