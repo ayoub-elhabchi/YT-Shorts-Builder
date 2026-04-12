@@ -1253,22 +1253,22 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 )
                 layer += 1
         else:
-            # KINETIC BEHAVIOR: Diagonal staggering with highlighting
             # Pick a fresh starting anchor for this chunk (center-ish, slightly varied)
-            cur_x = _rnd.randint(310, 470)
-            cur_y = _rnd.randint(760, 900)
+            cur_x = _rnd.randint(350, 450)
+            cur_y = _rnd.randint(850, 950)
 
             # Get highlight settings
             highlight_enabled = style.get("highlight_spoken_word", False)
-            color_yellow = style.get("font_color_primary", "&H00F0EAD6")
+            color_yellow = style.get("font_color_primary", "&H0000FFFF")
             color_white = style.get("font_color_white", "&H00FFFFFF")
 
             layer = 0
             for wi, wobj in enumerate(chunk):
-                w_start = format_ass_time(wobj["start"])
-                w_end = format_ass_time(
-                    chunk[wi + 1]["start"] if wi < len(chunk) - 1 else chunk_end_t
-                )
+                w_start_t = wobj["start"]
+                w_end_t = chunk[wi + 1]["start"] if wi < len(chunk) - 1 else chunk_end_t
+                
+                w_start = format_ass_time(w_start_t)
+                w_end = format_ass_time(w_end_t)
 
                 txt = wobj["word"].strip()
                 wsize = _kinetic_word_size(txt, size_large, size_small)
@@ -1277,32 +1277,34 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 # Calculate position for this word
                 word_x = cur_x
                 word_y = cur_y
+                
+                # Randomly choose slide direction for each word pop-in
+                slide_offset = 60
+                direction = _rnd.choice(["left", "right", "up", "down"])
+                x1, y1 = word_x, word_y
+                if direction == "left": x1 += slide_offset
+                elif direction == "right": x1 -= slide_offset
+                elif direction == "up": y1 += slide_offset
+                elif direction == "down": y1 -= slide_offset
+                
+                # Animation duration (fast pop-in)
+                anim_dur = 200 # ms
+                move_tag = f"\\move({x1},{y1},{word_x},{word_y},0,{anim_dur})"
 
                 if highlight_enabled:
-                    # Create two dialogue events for each word:
-                    # 1. When being spoken: yellow
-                    # 2. When not being spoken: white
-
-                    # Event 1: Yellow when being spoken
+                    # 1. When being spoken: yellow and sliding
                     events.append(
                         f"Dialogue: {layer},{w_start},{w_end},"
                         f"{style_name},,0,0,0,,"
-                        f"{{\\pos({word_x},{word_y})\\fs{wsize}\\c{color_yellow}}}{txt}"
+                        f"{{{move_tag}\\fs{wsize}\\c{color_yellow}}}{txt}"
                     )
                     layer += 1
 
-                    # Event 2: White when not being spoken (before and after)
-                    if wi > 0:
-                        # Before being spoken: white from chunk start to word start
-                        events.append(
-                            f"Dialogue: {layer},{format_ass_time(chunk[0]['start'])},{w_start},"
-                            f"{style_name},,0,0,0,,"
-                            f"{{\\pos({word_x},{word_y})\\fs{wsize}\\c{color_white}}}{txt}"
-                        )
-                        layer += 1
+                    # Note: No more "before spoken" white text = no "block" appearance
 
+                    # 2. When not being spoken: white and static after spoken
                     if wi < len(chunk) - 1:
-                        # After being spoken: white from word end to chunk end
+                        # Stay white until chunk end
                         events.append(
                             f"Dialogue: {layer},{w_end},{chunk_end},"
                             f"{style_name},,0,0,0,,"
@@ -1310,19 +1312,19 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                         )
                         layer += 1
                 else:
-                    # No highlighting: single event with default color
+                    # No highlighting: simple pop-in and stay
                     events.append(
                         f"Dialogue: {layer},{w_start},{chunk_end},"
                         f"{style_name},,0,0,0,,"
-                        f"{{\\pos({word_x},{word_y})\\fs{wsize}}}{txt}"
+                        f"{{{move_tag}\\fs{wsize}}}{txt}"
                     )
                     layer += 1
 
-                # Diagonal step: right + down with randomised variance
-                step_x = _rnd.randint(55, 110)
-                step_y = _rnd.randint(75, 125)
-                cur_x = min(cur_x + step_x, 730)
-                cur_y = min(cur_y + step_y, 1680)
+                # Diagonal step: FIXED small steps for uniform spacing (equal small gap)
+                step_x = 35
+                step_y = 65
+                cur_x = min(cur_x+step_x, 800)
+                cur_y = min(cur_y+step_y, 1600)
 
     with open(ass_path, "w", encoding="utf-8-sig") as f:
         f.write(header)
