@@ -1213,8 +1213,8 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
             # INLINE BEHAVIOR: Whole phrase centered, words appear one by one and stay visible
             base_x, base_y = 540, 960  # Always center
 
-            # Decrease font size for inline
-            inline_size = int(size_large * 0.6)  # 60% of large size
+            # Use dedicated font size for inline or fallback to 60% of large size
+            inline_size = int(style.get("font_size_inline", size_large * 0.6))
 
             # Get highlight settings
             highlight_enabled = style.get("highlight_spoken_word", False)
