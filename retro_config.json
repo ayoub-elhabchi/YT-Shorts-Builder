@@ -13,7 +13,9 @@
     "font_color_primary": "&H0000FFFF",
     "font_color_white": "&H00FFFFFF", 
     "margin_v": 350,
-    "alignment": 2
+    "alignment": 2,
+    "kinetic_step_x_mult": 0.40,
+    "kinetic_step_y_mult": 0.8
   },
   "video": {
     "default_transition": "none",

@@ -1325,8 +1325,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                 next_wsize = size_large if wi < len(chunk) - 1 else wsize # heuristic
                 avg_size = (wsize + next_wsize) / 2
                 
-                step_x = int(avg_size * 0.40) 
-                step_y = int(avg_size * 1.05) 
+                # Load multipliers from config or use defaults
+                step_x_mult = float(style.get("kinetic_step_x_mult", 0.40))
+                step_y_mult = float(style.get("kinetic_step_y_mult", 1.05))
+
+                step_x = int(avg_size * step_x_mult) 
+                step_y = int(avg_size * step_y_mult) 
                 
                 cur_x = min(cur_x+step_x, 850)
                 cur_y = min(cur_y+step_y, 1650)
