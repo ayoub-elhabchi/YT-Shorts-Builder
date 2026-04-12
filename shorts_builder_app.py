@@ -1321,13 +1321,12 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
                     layer += 1
 
                 # Dynamic Diagonal step: scaled with font size to avoid overlap
-                # Vertical step should be roughly 0.5-0.6x of the word height for a tight but clean overlap
-                # Horizontal step should be roughly 0.3-0.4x of the word height
+                # Distance between centers (Alignment 5) should be > 100% of font size for no overlap
                 next_wsize = size_large if wi < len(chunk) - 1 else wsize # heuristic
                 avg_size = (wsize + next_wsize) / 2
                 
-                step_x = int(avg_size * 0.30) 
-                step_y = int(avg_size * 0.55) 
+                step_x = int(avg_size * 0.40) 
+                step_y = int(avg_size * 1.05) 
                 
                 cur_x = min(cur_x+step_x, 850)
                 cur_y = min(cur_y+step_y, 1650)
