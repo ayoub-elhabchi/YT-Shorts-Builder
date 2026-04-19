@@ -1,14 +1,15 @@
 {
   "audio": {
     "add_bgm_by_default": true,
-    "default_bgm_volume": 0.05
+    "default_bgm_volume": 0.04,
+    "voice_volume_boost": 2
   },
   "subtitles": {
     "enabled": true,
     "highlight_spoken_word": true,
     "layout_mode": "kinetic",
     "font_name": "Georgia",
-    "font_size_word": 150,
+    "font_size_word": 130,
     "font_size_inline": 80,
     "font_size_highlight": 72,
     "font_color_primary": "&H0000FFFF",
@@ -27,7 +28,7 @@
     "effects": {
       "shake_zoom": {
         "enabled": true,
-        "shake_intensity": 0.3,
+        "shake_intensity": 0.1,
         "zoom_out": 1.1,
         "duration": 0.3
       }

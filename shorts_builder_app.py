@@ -39,6 +39,7 @@ try:
     from effects import get_random_ken_burns_effect, KEN_BURNS_EFFECTS
 except ImportError:
     get_random_ken_burns_effect = None
+    KEN_BURNS_EFFECTS = []
 
 # Overlays module
 try:
@@ -66,7 +67,7 @@ BGM_DIR.mkdir(parents=True, exist_ok=True)
 OVERLAYS_DIR.mkdir(parents=True, exist_ok=True)
 
 DEFAULT_CONFIG = {
-    "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2},
+    "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2, "voice_volume_boost": 1.0},
     "subtitles": {
         "font_name": "Impact",
         "font_size_word": 90,
@@ -510,31 +511,44 @@ def download_file(url, output_path):
         raise
 
 
-def ensure_wav(input_path, wav_path):
-    with open(input_path, "rb") as f:
-        header = f.read(4)
-    if header[:4] == b"RIFF":
-        log("   ✅ Already WAV")
+def ensure_wav(input_path, wav_path, volume_boost=1.0):
+    needs_processing = False
+    
+    if volume_boost != 1.0:
+        needs_processing = True
+    else:
+        with open(input_path, "rb") as f:
+            header = f.read(4)
+        if header[:4] != b"RIFF":
+            needs_processing = True
+
+    if not needs_processing:
+        log("   ✅ Already WAV and no processing needed")
         if str(input_path) != str(wav_path):
             shutil.copy2(str(input_path), str(wav_path))
         return wav_path
-    log("   🔊 Converting to WAV...")
+
+    if volume_boost != 1.0:
+        log(f"   🔊 Processing audio to WAV (Volume Boost: {volume_boost}x)...")
+    else:
+        log("   🔊 Converting to WAV...")
+        
     cmd = [
         "ffmpeg",
-        "-i",
-        str(input_path),
-        "-acodec",
-        "pcm_s16le",
-        "-ar",
-        "16000",
-        "-ac",
-        "1",
-        "-y",
-        str(wav_path),
+        "-i", str(input_path),
+        "-acodec", "pcm_s16le",
+        "-ar", "16000",
+        "-ac", "1",
     ]
-    result = subprocess.run(cmd, capture_output=True, text=True)
-    if result.returncode != 0:
-        raise Exception(f"Cannot convert: {result.stderr[:200]}")
+    if volume_boost != 1.0:
+        cmd.extend(["-af", f"volume={volume_boost}"])
+    cmd.extend(["-y", str(wav_path)])
+    
+    try:
+        subprocess.run(cmd, check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        log(f"FFmpeg error: {e.stderr.decode()}")
+        raise
     log(f"   ✅ WAV ready: {os.path.getsize(wav_path)} bytes")
     return wav_path
 
@@ -1529,6 +1543,10 @@ def build_video_async(job_id, data, webhook_url, base_url):
         subtitle_style = data.get("subtitle_style", "word_by_word")
         transition_effect = data.get("transition", "none")
         transition_duration = float(data.get("transition_duration", 0.5))
+        # Hot-reload the config globally inside the thread
+        global CONFIG
+        CONFIG = load_config()
+
         add_bgm = data.get("add_bgm", CONFIG["audio"]["add_bgm_by_default"])
         bgm_volume = float(
             data.get("bgm_volume", CONFIG["audio"]["default_bgm_volume"])
@@ -1569,7 +1587,8 @@ def build_video_async(job_id, data, webhook_url, base_url):
         raw_audio = work_dir / "full_audio_raw"
         download_file(full_audio_url, raw_audio)
         full_audio_wav = work_dir / "full_audio.wav"
-        ensure_wav(raw_audio, full_audio_wav)
+        voice_volume_boost = CONFIG["audio"].get("voice_volume_boost", 1.0)
+        ensure_wav(raw_audio, full_audio_wav, volume_boost=voice_volume_boost)
         total_duration = get_audio_duration(full_audio_wav)
 
         # STEP 2: TRANSCRIBE
@@ -1992,7 +2011,7 @@ except ImportError:
 
 def load_default_retro_config():
     return {
-        "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2},
+        "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2, "voice_volume_boost": 1.5},
         "subtitles": {
             "font_name": "Impact",
             "font_size_word": 90,
@@ -2064,7 +2083,7 @@ def load_retro_config():
     if not RETRO_CONFIG_PATH.exists():
         # Create default config if it doesn't exist
         default_config = {
-            "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2},
+            "audio": {"add_bgm_by_default": True, "default_bgm_volume": 0.2, "voice_volume_boost": 1.5},
             "subtitles": {
                 "font_name": "Impact",
                 "font_size_word": 90,
@@ -2186,6 +2205,10 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
     try:
         update_job_status(job_id, "processing", progress="Starting n8n build...")
 
+        # Hot-reload retro_config dynamically for this thread
+        global RETRO_CONFIG
+        RETRO_CONFIG = load_retro_config()
+
         title = data.get("title", f'n8n_video_{datetime.now().strftime("%Y%m%d_%H%M%S")}')
         full_audio_url = data.get("full_audio_url")
         scenes = data.get("scenes", [])
@@ -2220,7 +2243,8 @@ def build_video_n8n_async(job_id, data, webhook_url, base_url):
         raw_audio = work_dir / "full_audio_raw"
         download_file(full_audio_url, raw_audio)
         full_audio_wav = work_dir / "full_audio.wav"
-        ensure_wav(raw_audio, full_audio_wav)
+        voice_volume_boost = RETRO_CONFIG["audio"].get("voice_volume_boost", 1.0)
+        ensure_wav(raw_audio, full_audio_wav, volume_boost=voice_volume_boost)
         total_duration = get_audio_duration(full_audio_wav)
 
         log("\n>>> [N8N] STEP 2: TRANSCRIBE")
